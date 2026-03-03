@@ -2,19 +2,32 @@ package com.example.rabit.ui
 
 import android.app.Application
 import android.bluetooth.BluetoothDevice
+import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.rabit.data.repository.KeyboardRepositoryImpl
 import com.example.rabit.domain.repository.KeyboardRepository
 import com.example.rabit.data.bluetooth.HidDeviceManager
+import com.example.rabit.data.bluetooth.HidService
 import com.example.rabit.domain.model.HidKeyCodes
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlin.experimental.or
+import kotlin.math.abs
+import kotlin.math.pow
+import kotlin.math.sign
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: KeyboardRepository = KeyboardRepositoryImpl(application)
     private val prefs = application.getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
+    private val clipboard = application.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
     val connectionState: StateFlow<HidDeviceManager.ConnectionState> = repository.connectionState
     val scannedDevices: StateFlow<Set<BluetoothDevice>> = repository.scannedDevices
@@ -36,8 +49,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _notificationSyncEnabled = MutableStateFlow(prefs.getBoolean("notification_sync_enabled", false))
     val notificationSyncEnabled = _notificationSyncEnabled.asStateFlow()
 
+    private var lastClipboardText: String? = null
+
+    // Custom Macros State
+    private val _customMacros = MutableStateFlow<List<CustomMacro>>(loadCustomMacros())
+    val customMacros = _customMacros.asStateFlow()
+
+    // Trackpad optimization
+    private var lastMoveTime = 0L
+    private val moveThreshold = 0.5f 
+
     init {
         updateRepositorySpeed(_typingSpeed.value)
+        startClipboardObserver()
+    }
+
+    private fun startClipboardObserver() {
+        viewModelScope.launch {
+            while (true) {
+                try {
+                    val primaryClip = clipboard.primaryClip
+                    if (primaryClip != null && primaryClip.itemCount > 0) {
+                        val text = primaryClip.getItemAt(0).text?.toString()
+                        if (text != lastClipboardText && !text.isNullOrBlank()) {
+                            lastClipboardText = text
+                            showClipboardNotification(text)
+                        }
+                    }
+                } catch (e: Exception) { }
+                delay(3000)
+            }
+        }
+    }
+
+    private fun showClipboardNotification(text: String) {
+        val intent = Intent(getApplication(), HidService::class.java).apply {
+            action = "SHOW_CLIPBOARD_NOTIFICATION"
+            putExtra("text", text)
+        }
+        getApplication<Application>().startService(intent)
     }
 
     fun startScanning() = repository.startScanning()
@@ -64,14 +114,101 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendConsumerKey(usageId: Short) = repository.sendConsumerKey(usageId)
     fun sendText(text: String) = repository.sendText(text)
-    fun sendMouseMove(dx: Float, dy: Float, buttons: Int = 0, wheel: Int = 0) = repository.sendMouseMove(dx, dy, buttons, wheel)
+    
+    fun sendMouseMove(dx: Float, dy: Float, buttons: Int = 0, wheel: Int = 0) {
+        if (buttons != 0 || wheel != 0) {
+            repository.sendMouseMove(dx, dy, buttons, wheel)
+            return
+        }
+        if (abs(dx) < moveThreshold && abs(dy) < moveThreshold) return
+        val now = System.currentTimeMillis()
+        val dt = (now - lastMoveTime).coerceAtLeast(1L)
+        lastMoveTime = now
+        val sensitivity = 1.1f 
+        val accelFactor = 1.4f 
+        val finalDx = (sign(dx) * abs(dx).pow(accelFactor) * sensitivity)
+        val finalDy = (sign(dy) * abs(dy).pow(accelFactor) * sensitivity)
+        repository.sendMouseMove(finalDx, finalDy, buttons, wheel)
+    }
     
     fun pauseTextPush() = repository.pauseTextPush()
     fun resumeTextPush() = repository.resumeTextPush()
     fun stopTextPush() = repository.stopTextPush()
 
+    fun onVoiceResult(text: String) {
+        if (text.isNotBlank()) {
+            repository.sendText(text + " ")
+        }
+    }
+
     fun unlockMac() {
         repository.unlockMac(_unlockPassword.value)
+    }
+
+    fun sendMacro(macro: String) {
+        viewModelScope.launch {
+            macro.split("&&").forEach { part ->
+                repository.sendText(part.trim())
+                delay(100)
+                repository.sendKey(HidKeyCodes.KEY_ENTER)
+                delay(300)
+            }
+        }
+    }
+
+    fun sendKeyCombination(codes: List<Byte>) {
+        viewModelScope.launch {
+            val modifiers = codes.filter { it in listOf(
+                HidKeyCodes.MODIFIER_LEFT_CTRL,
+                HidKeyCodes.MODIFIER_LEFT_SHIFT,
+                HidKeyCodes.MODIFIER_LEFT_ALT,
+                HidKeyCodes.MODIFIER_LEFT_GUI
+            ) }
+            val mainKey = codes.firstOrNull { it !in modifiers } ?: HidKeyCodes.KEY_NONE
+            var combinedMod: Byte = 0
+            modifiers.forEach { combinedMod = combinedMod or it }
+            repository.sendKey(mainKey, combinedMod)
+        }
+    }
+
+    // Custom Macros Logic
+    fun addCustomMacro(name: String, command: String) {
+        val newList = _customMacros.value + CustomMacro(name, command)
+        _customMacros.value = newList
+        saveCustomMacros(newList)
+    }
+
+    fun deleteCustomMacro(macro: CustomMacro) {
+        val newList = _customMacros.value - macro
+        _customMacros.value = newList
+        saveCustomMacros(newList)
+    }
+
+    private fun saveCustomMacros(macros: List<CustomMacro>) {
+        val array = JSONArray()
+        macros.forEach {
+            val obj = JSONObject().apply {
+                put("name", it.name)
+                put("command", it.command)
+            }
+            array.put(obj)
+        }
+        prefs.edit().putString("custom_macros_json", array.toString()).apply()
+    }
+
+    private fun loadCustomMacros(): List<CustomMacro> {
+        val json = prefs.getString("custom_macros_json", null) ?: return emptyList()
+        return try {
+            val array = JSONArray(json)
+            val list = mutableListOf<CustomMacro>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(CustomMacro(obj.getString("name"), obj.getString("command")))
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     fun setUnlockPassword(password: String) {
@@ -107,3 +244,5 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         HidDeviceManager.getInstance(getApplication()).typingDelay = delay
     }
 }
+
+data class CustomMacro(val name: String, val command: String)

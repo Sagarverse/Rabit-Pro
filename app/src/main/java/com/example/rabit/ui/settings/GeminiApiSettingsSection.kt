@@ -76,7 +76,7 @@ fun GeminiApiSettingsSection(viewModel: GeminiSettingsViewModel) {
         Spacer(modifier = Modifier.height(16.dp))
 
         if (isOfflineMode) {
-            Text("Local GGUF Model", color = Silver, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text("Local Model (.bin)", color = Silver, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(8.dp))
             
             Surface(
@@ -94,7 +94,7 @@ fun GeminiApiSettingsSection(viewModel: GeminiSettingsViewModel) {
                     Icon(Icons.Default.Folder, contentDescription = null, tint = AccentGold, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = ggufPath?.substringAfterLast("/") ?: "Select .gguf model file",
+                        text = ggufPath?.substringAfterLast("/") ?: "Select MediaPipe model (.bin)",
                         color = if (ggufPath != null) Platinum else Silver.copy(alpha = 0.5f),
                         fontSize = 14.sp,
                         maxLines = 1
@@ -104,7 +104,14 @@ fun GeminiApiSettingsSection(viewModel: GeminiSettingsViewModel) {
             
             if (ggufPath != null) {
                 Text(
-                    "Warning: Large models require high RAM. Use 1B-3B params for best mobile performance.",
+                    "Model loaded. Note: MediaPipe requires specific .bin format converted from GGUF/LoRA.",
+                    color = SuccessGreen,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            } else {
+                Text(
+                    "Use converted Gemma 2B or Phi-2 models for best results.",
                     color = WarningYellow,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(top = 8.dp)

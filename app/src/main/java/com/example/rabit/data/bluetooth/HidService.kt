@@ -25,6 +25,7 @@ class HidService : Service() {
     private val binder = LocalBinder()
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val channelId = "hid_service_channel"
+    private val clipboardChannelId = "clipboard_channel"
     private lateinit var mediaNotificationManager: MediaNotificationManager
     private lateinit var automationManager: AutomationManager
     private lateinit var encryptionManager: com.example.rabit.data.secure.EncryptionManager
@@ -42,22 +43,16 @@ class HidService : Service() {
         hidDeviceManager = HidDeviceManager.getInstance(this)
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
-        // Feature 2: Set up media notification manager
         mediaNotificationManager = MediaNotificationManager(this)
-
-        // Feature 4: Set up automation manager
         automationManager = com.example.rabit.data.automation.AutomationManager(this)
-
-        // Feature 5: Set up encryption manager
         encryptionManager = com.example.rabit.data.secure.EncryptionManager(this)
 
-        // Start the Ktor HTTP server and wire callbacks
         RabitNetworkServer.onMediaMetadataReceived = { metadata ->
             serviceScope.launch { mediaNotificationManager.updateMedia(metadata) }
         }
         RabitNetworkServer.start(this, encryptionManager)
 
-        createNotificationChannel()
+        createNotificationChannels()
         startForeground(1, buildNotification("Disconnected", "Bluetooth HID connection is inactive."))
         observeConnectionState()
         setupShakeDetector()
@@ -109,14 +104,12 @@ class HidService : Service() {
             hidDeviceManager.connectionState.collect { state ->
                 val (title, text) = when (state) {
                     is HidDeviceManager.ConnectionState.Connected -> {
-                        // Feature 4: trigger automations on connect
                         automationManager.onConnected()
                         "Connected" to "Active connection to ${state.deviceName}"
                     }
                     is HidDeviceManager.ConnectionState.Connecting ->
                         "Connecting" to "Attempting to connect..."
                     else -> {
-                        // Feature 4: restore phone on disconnect
                         automationManager.onDisconnected()
                         "Disconnected" to "Bluetooth HID connection is inactive."
                     }
@@ -136,8 +129,48 @@ class HidService : Service() {
                 val enabled = intent.getBooleanExtra("enabled", false)
                 setShakeEnabled(enabled)
             }
+            "PUSH_CLIPBOARD" -> {
+                val content = intent.getStringExtra("text") ?: ""
+                sendText(content)
+                val notificationManager = getSystemService(NotificationManager::class.java)
+                notificationManager.cancel(2) // Remove clipboard notification after push
+            }
+            "DISMISS_CLIPBOARD" -> {
+                val notificationManager = getSystemService(NotificationManager::class.java)
+                notificationManager.cancel(2)
+            }
+            "SHOW_CLIPBOARD_NOTIFICATION" -> {
+                val text = intent.getStringExtra("text") ?: ""
+                showClipboardNotification(text)
+            }
         }
         return START_NOT_STICKY
+    }
+
+    private fun showClipboardNotification(text: String) {
+        val pushIntent = Intent(this, HidService::class.java).apply {
+            action = "PUSH_CLIPBOARD"
+            putExtra("text", text)
+        }
+        val pushPendingIntent = PendingIntent.getService(this, 0, pushIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        val dismissIntent = Intent(this, HidService::class.java).apply {
+            action = "DISMISS_CLIPBOARD"
+        }
+        val dismissPendingIntent = PendingIntent.getService(this, 1, dismissIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        val notification = NotificationCompat.Builder(this, clipboardChannelId)
+            .setSmallIcon(android.R.drawable.ic_menu_set_as)
+            .setContentTitle("Clipboard Detected")
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .addAction(android.R.drawable.ic_menu_send, "Push to Mac", pushPendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Dismiss", dismissPendingIntent)
+            .build()
+
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.notify(2, notification)
     }
     
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -149,14 +182,23 @@ class HidService : Service() {
         return binder
     }
 
-    private fun createNotificationChannel() {
+    private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val manager = getSystemService(NotificationManager::class.java)
+            
+            val serviceChannel = NotificationChannel(
                 channelId, "Rabit Background Service", NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Keeps Bluetooth connection active while app is in use."
             }
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            manager.createNotificationChannel(serviceChannel)
+
+            val clipboardChannel = NotificationChannel(
+                clipboardChannelId, "Clipboard Sync", NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications for clipboard sync features."
+            }
+            manager.createNotificationChannel(clipboardChannel)
         }
     }
 

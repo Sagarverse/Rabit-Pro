@@ -65,6 +65,8 @@ dependencies {
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.kotlinx.serialization.json)
+    
+    implementation(libs.mediapipe.genai)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

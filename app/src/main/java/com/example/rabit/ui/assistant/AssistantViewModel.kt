@@ -7,7 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.rabit.domain.model.gemini.GeminiRequest
 import com.example.rabit.domain.model.gemini.GeminiResponse
 import com.example.rabit.data.gemini.GeminiRepositoryImpl
-import kotlinx.coroutines.delay
+import com.example.rabit.data.gemini.LocalLlmManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,6 +22,7 @@ sealed class AssistantUiState {
 
 class AssistantViewModel(application: Application) : AndroidViewModel(application) {
     private val geminiRepo = GeminiRepositoryImpl()
+    private val localLlmManager = LocalLlmManager(application)
     private val prefs = application.getSharedPreferences("gemini_prefs", Context.MODE_PRIVATE)
     
     private val _uiState = MutableStateFlow<AssistantUiState>(AssistantUiState.Idle)
@@ -64,11 +65,16 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             try {
                 val resp = if (isOffline) {
                     if (ggufPath == null) {
-                        GeminiResponse(text = "", error = com.example.rabit.domain.model.gemini.GeminiError(-1, "No local model selected. Please select a .gguf file in settings."))
+                        GeminiResponse(text = "", error = com.example.rabit.domain.model.gemini.GeminiError(-1, "Local LLM Error: No model file selected. Please go to Settings > AI Configuration and select a model file (.bin/converted)."))
                     } else {
-                        // Placeholder for Local LLM execution
-                        delay(2000) // Simulate processing
-                        GeminiResponse(text = "[Local Mode]: Simulated response using $ggufPath. Real GGUF inference requires llama.cpp integration.")
+                        // Initialize local LLM with selected path
+                        val initialized = localLlmManager.initialize(ggufPath)
+                        if (initialized) {
+                            val localResult = localLlmManager.generateResponse(prompt)
+                            GeminiResponse(text = localResult)
+                        } else {
+                            GeminiResponse(text = "", error = com.example.rabit.domain.model.gemini.GeminiError(-2, "Failed to initialize Local LLM. Ensure you are using a MediaPipe-compatible model format."))
+                        }
                     }
                 } else {
                     val req = GeminiRequest(
@@ -100,5 +106,10 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun clearResponse() {
         _uiState.value = AssistantUiState.Idle
+    }
+
+    override fun onCleared() {
+        localLlmManager.close()
+        super.onCleared()
     }
 }
