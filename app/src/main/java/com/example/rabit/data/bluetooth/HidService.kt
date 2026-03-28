@@ -2,6 +2,7 @@ package com.example.rabit.data.bluetooth
 
 import android.app.*
 import android.bluetooth.BluetoothDevice
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.hardware.Sensor
@@ -10,6 +11,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.example.rabit.MainActivity
 import com.example.rabit.data.automation.AutomationManager
@@ -34,6 +36,10 @@ class HidService : Service() {
     private var shakeDetector: ShakeDetector? = null
     private var isShakeEnabled = false
 
+    private lateinit var clipboard: ClipboardManager
+    private var lastClipboardText: String? = null
+    private var clipboardJob: Job? = null
+
     inner class LocalBinder : Binder() {
         fun getService(): HidService = this@HidService
     }
@@ -42,6 +48,7 @@ class HidService : Service() {
         super.onCreate()
         hidDeviceManager = HidDeviceManager.getInstance(this)
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
         mediaNotificationManager = MediaNotificationManager(this)
         automationManager = com.example.rabit.data.automation.AutomationManager(this)
@@ -56,6 +63,41 @@ class HidService : Service() {
         startForeground(1, buildNotification("Disconnected", "Bluetooth HID connection is inactive."))
         observeConnectionState()
         setupShakeDetector()
+        startClipboardObserver()
+    }
+
+    private fun startClipboardObserver() {
+        clipboardJob?.cancel()
+        
+        try {
+            val currentClip = clipboard.primaryClip
+            if (currentClip != null && currentClip.itemCount > 0) {
+                lastClipboardText = currentClip.getItemAt(0).text?.toString()
+            }
+        } catch (e: Exception) { }
+
+        clipboardJob = serviceScope.launch {
+            while (isActive) {
+                try {
+                    val primaryClip = clipboard.primaryClip
+                    if (primaryClip != null && primaryClip.itemCount > 0) {
+                        val text = primaryClip.getItemAt(0).text?.toString()
+                        if (text != lastClipboardText && !text.isNullOrBlank()) {
+                            lastClipboardText = text
+                            val prefs = getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
+                            val isAutoPush = prefs.getBoolean("auto_push_enabled", false)
+                            
+                            if (isAutoPush) {
+                                sendText(text)
+                            } else {
+                                showClipboardNotification(text)
+                            }
+                        }
+                    }
+                } catch (e: Exception) { }
+                delay(3000)
+            }
+        }
     }
 
     private fun setupShakeDetector() {
@@ -133,7 +175,16 @@ class HidService : Service() {
                 val content = intent.getStringExtra("text") ?: ""
                 sendText(content)
                 val notificationManager = getSystemService(NotificationManager::class.java)
-                notificationManager.cancel(2) // Remove clipboard notification after push
+                notificationManager.cancel(2)
+            }
+            "TOGGLE_AUTO_PUSH" -> {
+                val prefs = getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
+                val current = prefs.getBoolean("auto_push_enabled", false)
+                prefs.edit().putBoolean("auto_push_enabled", !current).apply()
+                val status = if (!current) "Enabled" else "Disabled"
+                Toast.makeText(this, "Auto-Push $status", Toast.LENGTH_SHORT).show()
+                val notificationManager = getSystemService(NotificationManager::class.java)
+                notificationManager.cancel(2)
             }
             "DISMISS_CLIPBOARD" -> {
                 val notificationManager = getSystemService(NotificationManager::class.java)
@@ -144,15 +195,23 @@ class HidService : Service() {
                 showClipboardNotification(text)
             }
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun showClipboardNotification(text: String) {
+        val prefs = getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
+        val isAutoPush = prefs.getBoolean("auto_push_enabled", false)
+
         val pushIntent = Intent(this, HidService::class.java).apply {
             action = "PUSH_CLIPBOARD"
             putExtra("text", text)
         }
         val pushPendingIntent = PendingIntent.getService(this, 0, pushIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        val toggleAutoPushIntent = Intent(this, HidService::class.java).apply {
+            action = "TOGGLE_AUTO_PUSH"
+        }
+        val toggleAutoPushPendingIntent = PendingIntent.getService(this, 2, toggleAutoPushIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
         val dismissIntent = Intent(this, HidService::class.java).apply {
             action = "DISMISS_CLIPBOARD"
@@ -166,6 +225,11 @@ class HidService : Service() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .addAction(android.R.drawable.ic_menu_send, "Push to Mac", pushPendingIntent)
+            .addAction(
+                if (isAutoPush) android.R.drawable.checkbox_on_background else android.R.drawable.checkbox_off_background,
+                if (isAutoPush) "Auto-Push: ON" else "Auto-Push: OFF",
+                toggleAutoPushPendingIntent
+            )
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Dismiss", dismissPendingIntent)
             .build()
 
@@ -174,8 +238,7 @@ class HidService : Service() {
     }
     
     override fun onTaskRemoved(rootIntent: Intent?) {
-        stopSelf()
-        super.onTaskRemoved(rootIntent)
+        // Keep service running even if app is swiped away
     }
 
     override fun onBind(intent: Intent?): IBinder {

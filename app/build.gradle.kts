@@ -67,6 +67,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     
     implementation(libs.mediapipe.genai)
+    implementation("io.coil-kt:coil-compose:2.6.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

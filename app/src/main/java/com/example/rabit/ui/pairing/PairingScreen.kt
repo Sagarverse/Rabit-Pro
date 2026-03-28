@@ -63,10 +63,9 @@ fun PairingScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-            Spacer(modifier = Modifier.height(40.dp))
-            
+            Spacer(modifier = Modifier.height(24.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -83,14 +82,14 @@ fun PairingScreen(
                         onClick = { viewModel.requestDiscoverable() },
                         modifier = Modifier.background(SoftGrey, CircleShape)
                     ) {
-                        Icon(Icons.Default.Visibility, contentDescription = "Make Discoverable", tint = AccentGold)
+                        Icon(Icons.Default.Visibility, contentDescription = "Make device discoverable", tint = AccentGold)
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     IconButton(
                         onClick = onNavigateToSettings,
                         modifier = Modifier.background(SoftGrey, CircleShape)
                     ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Platinum)
+                        Icon(Icons.Default.Settings, contentDescription = "Open settings", tint = Platinum)
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     IconButton(
@@ -111,12 +110,12 @@ fun PairingScreen(
                         },
                         modifier = Modifier.background(SoftGrey, CircleShape)
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Restart", tint = Platinum)
+                        Icon(Icons.Default.Refresh, contentDescription = "Restart app", tint = Platinum)
                     }
                 }
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Radar Animation Section
             Box(
@@ -130,7 +129,7 @@ fun PairingScreen(
                 } else {
                     Icon(
                         Icons.Default.Bluetooth,
-                        contentDescription = null,
+                        contentDescription = "Bluetooth icon",
                         tint = Silver.copy(alpha = 0.3f),
                         modifier = Modifier.size(64.dp)
                     )
@@ -167,7 +166,7 @@ fun PairingScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             PremiumSectionHeader("OTHER DEVICES")
 
@@ -204,11 +203,29 @@ fun PairingScreen(
                                 .padding(32.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = AccentBlue,
-                                strokeWidth = 2.dp
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    Icons.Default.Bluetooth,
+                                    contentDescription = "No devices",
+                                    tint = Silver.copy(alpha = 0.3f),
+                                    modifier = Modifier.size(40.dp)
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    if (isScanning) "Scanning for devices..." else "No devices found.",
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                if (isScanning) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = AccentBlue,
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                            }
                         }
                     }
                 }

@@ -2,6 +2,7 @@ package com.example.rabit.data.gemini
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -10,9 +11,13 @@ import java.io.File
 class LocalLlmManager(private val context: Context) {
     private var llmInference: LlmInference? = null
     private var currentModelPath: String? = null
+    private var initializationError: String? = null
 
     suspend fun initialize(modelUriString: String?): Boolean = withContext(Dispatchers.IO) {
-        if (modelUriString == null) return@withContext false
+        if (modelUriString == null) {
+            initializationError = "No model file selected."
+            return@withContext false
+        }
         
         try {
             val modelPath = getPathFromUri(modelUriString) ?: return@withContext false
@@ -21,7 +26,7 @@ class LocalLlmManager(private val context: Context) {
                 return@withContext true
             }
 
-            // Close existing instance if any
+            Log.d("LocalLlmManager", "Attempting to load model from: $modelPath")
             llmInference?.close()
 
             val options = LlmInference.LlmInferenceOptions.builder()
@@ -32,15 +37,21 @@ class LocalLlmManager(private val context: Context) {
 
             llmInference = LlmInference.createFromOptions(context, options)
             currentModelPath = modelPath
+            initializationError = null
+            Log.d("LocalLlmManager", "Model loaded successfully!")
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            val errorMsg = e.message ?: "Unknown MediaPipe error"
+            initializationError = "MediaPipe Error: $errorMsg. Ensure the file is a valid MediaPipe-converted .bin file."
+            Log.e("LocalLlmManager", "Initialization failed: $errorMsg", e)
             false
         }
     }
 
+    fun getLastError(): String? = initializationError
+
     suspend fun generateResponse(prompt: String): String = withContext(Dispatchers.IO) {
-        val inference = llmInference ?: return@withContext "Error: Local LLM not initialized. Please ensure a valid model is selected in settings."
+        val inference = llmInference ?: return@withContext initializationError ?: "Error: Local LLM not initialized."
         try {
             inference.generateResponse(prompt)
         } catch (e: Exception) {
@@ -53,25 +64,23 @@ class LocalLlmManager(private val context: Context) {
         return if (uri.scheme == "file") {
             uri.path
         } else if (uri.scheme == "content") {
-            // For content URIs, we might need to copy the file to internal storage 
-            // because MediaPipe requires a direct file path.
             copyFileToInternal(uri)
         } else {
-            uriString // Assume it's already a path
+            uriString
         }
     }
 
     private fun copyFileToInternal(uri: Uri): String? {
         return try {
             val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val fileName = "local_model.bin"
-            val file = File(context.cacheDir, fileName)
+            // We use a fixed name to avoid filling up storage with multiple copies
+            val file = File(context.cacheDir, "mediapipe_model_cache.bin")
             file.outputStream().use { outputStream ->
                 inputStream.copyTo(outputStream)
             }
             file.absolutePath
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("LocalLlmManager", "Failed to copy file to internal storage", e)
             null
         }
     }

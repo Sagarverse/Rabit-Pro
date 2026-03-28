@@ -40,6 +40,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     val password by viewModel.unlockPassword.collectAsState()
     val typingSpeed by viewModel.typingSpeed.collectAsState()
     val notificationSync by viewModel.notificationSyncEnabled.collectAsState()
+    val autoPush by viewModel.autoPushEnabled.collectAsState()
     
     val prefs = remember { context.getSharedPreferences("rabit_prefs", android.content.Context.MODE_PRIVATE) }
     var shakeEnabled by remember { mutableStateOf(prefs.getBoolean("shake_to_control_calls", false)) }
@@ -64,7 +65,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 title = { Text("Settings", color = Platinum) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Platinum)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Platinum)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Obsidian)
@@ -127,8 +128,16 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 )
             }
 
-            PremiumSectionHeader("NOTIFICATIONS")
+            PremiumSectionHeader("CLIPBOARD & NOTIFICATIONS")
             PremiumGlassCard {
+                SettingsToggleItem(
+                    title = "Clipboard Auto-Push",
+                    subtitle = "Automatically push copied text to Mac",
+                    icon = Icons.Default.ContentPasteGo,
+                    checked = autoPush,
+                    onCheckedChange = { viewModel.setAutoPushEnabled(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.5f))
                 SettingsToggleItem(
                     title = "Notification Sync",
                     subtitle = "Type phone notifications to Mac",

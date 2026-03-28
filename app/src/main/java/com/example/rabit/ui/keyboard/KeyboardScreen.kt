@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import com.example.rabit.ui.components.SkeuoCard
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -16,10 +17,12 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -30,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -37,6 +41,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.rabit.data.bluetooth.HidDeviceManager
 import com.example.rabit.domain.model.HidKeyCodes
 import com.example.rabit.ui.CustomMacro
@@ -77,11 +82,11 @@ fun KeyboardScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
             PremiumHeader(connectionState, onNavigateToSettings, viewModel::disconnect)
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             HorizontalPager(
                 state = pagerState,
@@ -105,15 +110,11 @@ fun TrackpadTab(viewModel: MainViewModel) {
     Column(modifier = Modifier.fillMaxSize()) {
         Text("TRACKPAD", color = Silver, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Spacer(modifier = Modifier.height(16.dp))
-        
         Row(modifier = Modifier.weight(1f)) {
-            Box(
+            SkeuoCard(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(32.dp))
-                    .background(Graphite)
-                    .border(1.dp, BorderColor, RoundedCornerShape(32.dp))
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDrag = { change, dragAmount ->
@@ -134,24 +135,24 @@ fun TrackpadTab(viewModel: MainViewModel) {
                             viewModel.sendMouseMove(0f, 0f, buttons = 0)
                         }, 50)
                     },
-                contentAlignment = Alignment.Center
+                cornerRadius = 32.dp
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.TouchApp, contentDescription = null, tint = Silver.copy(alpha = 0.2f), modifier = Modifier.size(64.dp))
+                    Icon(
+                        Icons.Default.TouchApp,
+                        contentDescription = "Touchpad gesture",
+                        tint = Silver.copy(alpha = 0.2f),
+                        modifier = Modifier.size(64.dp)
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("Swipe to move • Tap to click", color = Silver.copy(alpha = 0.4f), fontSize = 12.sp)
                 }
             }
-            
             Spacer(modifier = Modifier.width(12.dp))
-            
-            Box(
+            SkeuoCard(
                 modifier = Modifier
-                    .width(48.dp)
+                    .width(56.dp)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(SoftGrey)
-                    .border(1.dp, BorderColor, RoundedCornerShape(24.dp))
                     .pointerInput(Unit) {
                         detectDragGestures(
                             onDrag = { change, dragAmount ->
@@ -162,14 +163,16 @@ fun TrackpadTab(viewModel: MainViewModel) {
                             }
                         )
                     },
-                contentAlignment = Alignment.Center
+                cornerRadius = 24.dp
             ) {
-                Icon(Icons.Default.UnfoldMore, contentDescription = null, tint = Silver.copy(alpha = 0.3f))
+                Icon(
+                    Icons.Default.UnfoldMore,
+                    contentDescription = "Scroll area",
+                    tint = Silver.copy(alpha = 0.3f)
+                )
             }
         }
-        
         Spacer(modifier = Modifier.height(16.dp))
-        
         Row(
             modifier = Modifier.fillMaxWidth().height(80.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -205,31 +208,8 @@ fun TrackpadTab(viewModel: MainViewModel) {
 
 @Composable
 fun MacroDashboardTab(viewModel: MainViewModel) {
-    var selectedCategory by remember { mutableStateOf("DEV") }
-    val categories = listOf("DEV", "MEET", "SYSTEM", "CUSTOM")
     val customMacros by viewModel.customMacros.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
-
-    val defaultMacros = mapOf(
-        "DEV" to listOf(
-            MacroItem("Git Push", Icons.Default.CloudUpload, "git add . && git commit -m 'update' && git push", AccentBlue),
-            MacroItem("Git Status", Icons.Default.Info, "git status", AccentBlue),
-            MacroItem("Code .", Icons.Default.Code, "code .", AccentBlue),
-            MacroItem("Terminal", Icons.Default.Terminal, "open -a Terminal", AccentBlue)
-        ),
-        "MEET" to listOf(
-            MacroItem("Mute", Icons.Default.MicOff, "MUTE_CMD", SuccessGreen),
-            MacroItem("Camera", Icons.Default.VideocamOff, "CAMERA_CMD", SuccessGreen),
-            MacroItem("Raise Hand", Icons.Default.FrontHand, "HAND_CMD", SuccessGreen),
-            MacroItem("Share Screen", Icons.Default.ScreenShare, "SCREEN_CMD", SuccessGreen)
-        ),
-        "SYSTEM" to listOf(
-            MacroItem("Lock Mac", Icons.Default.Lock, "LOCK_CMD", ErrorRed),
-            MacroItem("Sleep", Icons.Default.PowerSettingsNew, "SLEEP_CMD", ErrorRed),
-            MacroItem("Screenshot", Icons.Default.CameraAlt, "SHOT_CMD", AccentGold),
-            MacroItem("Spotlight", Icons.Default.Search, "SPOT_CMD", AccentGold)
-        )
-    )
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -238,45 +218,46 @@ fun MacroDashboardTab(viewModel: MainViewModel) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("MACRO DASHBOARD", color = Silver, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-            if (selectedCategory == "CUSTOM") {
-                IconButton(onClick = { showAddDialog = true }, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Macro", tint = AccentGold)
-                }
+            IconButton(onClick = { showAddDialog = true }, modifier = Modifier.size(24.dp)) {
+                Icon(Icons.Default.Add, contentDescription = "Add Macro", tint = AccentGold)
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        
-        Row(
-            modifier = Modifier.fillMaxWidth().height(36.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            categories.forEach { cat ->
-                val active = selectedCategory == cat
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(if (active) AccentBlue else SoftGrey)
-                        .clickable { selectedCategory = cat },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(cat, color = if (active) Obsidian else Silver, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+
+        // Example macro card
+        Text("Example Macro:", color = Silver, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        MacroCard(
+            macro = MacroItem(
+                name = "Git Status",
+                icon = Icons.Default.Info,
+                command = "git status",
+                color = AccentBlue
+            ),
+            showDelete = false,
+            onClick = {}
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (customMacros.isEmpty()) {
+            Box(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = "No macros",
+                        tint = Silver.copy(alpha = 0.4f),
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "No custom macros yet.\nTap + to create one!",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
                 }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        val currentMacros = if (selectedCategory == "CUSTOM") {
-            customMacros.map { MacroItem(it.name, Icons.Default.Adjust, it.command, AccentGold) }
-        } else {
-            defaultMacros[selectedCategory] ?: emptyList()
-        }
-
-        if (currentMacros.isEmpty() && selectedCategory == "CUSTOM") {
-            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text("No custom macros yet.\nTap + to create one!", color = Silver, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         } else {
             LazyVerticalGrid(
@@ -285,8 +266,8 @@ fun MacroDashboardTab(viewModel: MainViewModel) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(currentMacros) { macro ->
-                    MacroCard(macro, showDelete = selectedCategory == "CUSTOM", onDelete = {
+                items(customMacros.map { MacroItem(it.name, Icons.Default.Adjust, it.command, AccentGold) }) { macro ->
+                    MacroCard(macro, showDelete = true, onDelete = {
                         viewModel.deleteCustomMacro(CustomMacro(macro.name, macro.command))
                     }) {
                         handleMacroExecution(viewModel, macro.command)
@@ -368,28 +349,50 @@ data class MacroItem(val name: String, val icon: ImageVector, val command: Strin
 
 @Composable
 fun MacroCard(macro: MacroItem, showDelete: Boolean = false, onDelete: () -> Unit = {}, onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier.height(100.dp).clickable { onClick() },
-        color = Graphite,
-        shape = RoundedCornerShape(24.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor)
+    var pressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, label = "macroCardScale")
+    SkeuoCard(
+        modifier = Modifier
+            .height(110.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        tryAwaitRelease()
+                        pressed = false
+                        onClick()
+                    }
+                )
+            },
+        cornerRadius = 28.dp
     ) {
         Box {
             Column(
-                modifier = Modifier.fillMaxSize().padding(12.dp),
+                modifier = Modifier.fillMaxSize().padding(8.dp),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(macro.icon, contentDescription = null, tint = macro.color, modifier = Modifier.size(24.dp))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(macro.name, color = Platinum, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Icon(
+                    macro.icon,
+                    contentDescription = "Macro icon: ${macro.name}",
+                    tint = macro.color,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(macro.name, color = Platinum, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
             }
             if (showDelete) {
                 IconButton(
                     onClick = onDelete,
                     modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
                 ) {
-                    Icon(Icons.Default.Delete, contentDescription = null, tint = ErrorRed.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Delete macro",
+                        tint = ErrorRed.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }
@@ -402,6 +405,7 @@ fun AdvancedTab(viewModel: MainViewModel, onNavigateToSettings: () -> Unit) {
     val scope = rememberCoroutineScope()
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var fileName by remember { mutableStateOf("") }
+    val currentMedia by viewModel.currentMedia.collectAsState()
     
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         selectedFileUri = uri
@@ -414,9 +418,47 @@ fun AdvancedTab(viewModel: MainViewModel, onNavigateToSettings: () -> Unit) {
         }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("MEDIA & FILE CONTROLS", color = Silver, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         
+        // Media Artwork Sync Card
+        AnimatedVisibility(visible = currentMedia != null) {
+            currentMedia?.let { media ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Graphite,
+                    shape = RoundedCornerShape(24.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor)
+                ) {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            modifier = Modifier.size(80.dp),
+                            color = SoftGrey,
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            if (media.artUrl.isNotBlank()) {
+                                AsyncImage(
+                                    model = media.artUrl,
+                                    contentDescription = "Album Art",
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Icon(Icons.Default.MusicNote, contentDescription = null, tint = Silver, modifier = Modifier.padding(20.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(media.title, color = Platinum, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text(media.artist, color = Silver, fontSize = 14.sp, maxLines = 1)
+                            if (media.album.isNotBlank()) {
+                                Text(media.album, color = Silver.copy(alpha = 0.5f), fontSize = 12.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = Graphite,
@@ -509,36 +551,38 @@ fun MediaIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: ()
 
 @Composable
 fun SmallActionCard(modifier: Modifier, title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, accent: Color, onClick: () -> Unit) {
-    Surface(
+    com.example.rabit.ui.components.SkeuoCard(
         modifier = modifier.height(100.dp).clickable { onClick() },
-        color = Graphite,
-        shape = RoundedCornerShape(24.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor)
+        cornerRadius = 24.dp
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(24.dp))
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(title, color = Platinum, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-        }
-    }
-}
-
-@Composable
-fun PremiumBottomBar(selectedTab: Int, onNavigateToAssistant: () -> Unit, onTabSelected: (Int) -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 24.dp, start = 12.dp, end = 12.dp)
-            .height(64.dp)
-            .background(Graphite, RoundedCornerShape(32.dp))
-            .border(1.dp, BorderColor, RoundedCornerShape(32.dp)),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
+            val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+            MouseButton(
+                modifier = Modifier.weight(1f),
+                text = "LEFT",
+                onClick = {
+                    viewModel.sendMouseMove(0f, 0f, buttons = 1)
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ viewModel.sendMouseMove(0f, 0f, buttons = 0) }, 50)
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                }
+            )
+            MouseButton(
+                modifier = Modifier.weight(0.6f),
+                text = "MID",
+                onClick = {
+                    viewModel.sendMouseMove(0f, 0f, buttons = 4)
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ viewModel.sendMouseMove(0f, 0f, buttons = 0) }, 50)
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                }
+            )
+            MouseButton(
+                modifier = Modifier.weight(1f),
+                text = "RIGHT",
+                onClick = {
+                    viewModel.sendMouseMove(0f, 0f, buttons = 2)
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ viewModel.sendMouseMove(0f, 0f, buttons = 0) }, 50)
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                }
+            )
             modifier = Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
@@ -827,9 +871,22 @@ fun PremiumKey(label: String, modifier: Modifier, accent: Color, onPress: () -> 
 
 @Composable
 fun MouseButton(modifier: Modifier, text: String, onClick: () -> Unit) {
+    var pressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(if (pressed) 0.96f else 1f, label = "mouseButtonScale")
     Button(
         onClick = onClick,
-        modifier = modifier.fillMaxHeight(),
+        modifier = modifier
+            .fillMaxHeight()
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        tryAwaitRelease()
+                        pressed = false
+                    }
+                )
+            },
         shape = RoundedCornerShape(20.dp),
         colors = ButtonDefaults.buttonColors(containerColor = SoftGrey),
         contentPadding = PaddingValues(0.dp)

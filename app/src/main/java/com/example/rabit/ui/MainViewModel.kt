@@ -2,15 +2,17 @@ package com.example.rabit.ui
 
 import android.app.Application
 import android.bluetooth.BluetoothDevice
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
+import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.rabit.data.repository.KeyboardRepositoryImpl
 import com.example.rabit.domain.repository.KeyboardRepository
 import com.example.rabit.data.bluetooth.HidDeviceManager
 import com.example.rabit.data.bluetooth.HidService
+import com.example.rabit.data.network.RabitNetworkServer
 import com.example.rabit.domain.model.HidKeyCodes
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +29,6 @@ import kotlin.math.sign
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: KeyboardRepository = KeyboardRepositoryImpl(application)
     private val prefs = application.getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
-    private val clipboard = application.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
     val connectionState: StateFlow<HidDeviceManager.ConnectionState> = repository.connectionState
     val scannedDevices: StateFlow<Set<BluetoothDevice>> = repository.scannedDevices
@@ -49,45 +50,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _notificationSyncEnabled = MutableStateFlow(prefs.getBoolean("notification_sync_enabled", false))
     val notificationSyncEnabled = _notificationSyncEnabled.asStateFlow()
 
-    private var lastClipboardText: String? = null
+    private val _autoPushEnabled = MutableStateFlow(prefs.getBoolean("auto_push_enabled", false))
+    val autoPushEnabled = _autoPushEnabled.asStateFlow()
 
-    // Custom Macros State
-    private val _customMacros = MutableStateFlow<List<CustomMacro>>(loadCustomMacros())
-    val customMacros = _customMacros.asStateFlow()
-
-    // Trackpad optimization
-    private var lastMoveTime = 0L
-    private val moveThreshold = 0.5f 
-
-    init {
-        updateRepositorySpeed(_typingSpeed.value)
-        startClipboardObserver()
-    }
-
-    private fun startClipboardObserver() {
-        viewModelScope.launch {
-            while (true) {
-                try {
-                    val primaryClip = clipboard.primaryClip
-                    if (primaryClip != null && primaryClip.itemCount > 0) {
-                        val text = primaryClip.getItemAt(0).text?.toString()
-                        if (text != lastClipboardText && !text.isNullOrBlank()) {
-                            lastClipboardText = text
-                            showClipboardNotification(text)
-                        }
-                    }
-                } catch (e: Exception) { }
-                delay(3000)
+    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
+        when (key) {
+            "auto_push_enabled" -> _autoPushEnabled.value = sharedPreferences.getBoolean(key, false)
+            "auto_reconnect_enabled" -> _autoReconnectEnabled.value = sharedPreferences.getBoolean(key, true)
+            "notification_sync_enabled" -> _notificationSyncEnabled.value = sharedPreferences.getBoolean(key, false)
+            "unlock_password" -> _unlockPassword.value = sharedPreferences.getString(key, "6202") ?: "6202"
+            "typing_speed" -> {
+                val speed = sharedPreferences.getString(key, "Normal") ?: "Normal"
+                _typingSpeed.value = speed
+                updateRepositorySpeed(speed)
             }
         }
     }
 
-    private fun showClipboardNotification(text: String) {
-        val intent = Intent(getApplication(), HidService::class.java).apply {
-            action = "SHOW_CLIPBOARD_NOTIFICATION"
-            putExtra("text", text)
+    // Media Sync State
+    private val _currentMedia = MutableStateFlow<RabitNetworkServer.MediaMetadata?>(null)
+    val currentMedia = _currentMedia.asStateFlow()
+
+    // Custom Macros State (cached for performance)
+    private val _customMacros = MutableStateFlow<List<CustomMacro>>(emptyList())
+    val customMacros = _customMacros.asStateFlow()
+    private var macrosCache: List<CustomMacro>? = null
+
+    // Trackpad optimization
+    private var lastMoveTime = 0L
+    private val moveThreshold = 0.2f // Lower threshold for more precise small movements
+    private var lastDx = 0f
+    private var lastDy = 0f
+
+    init {
+        prefs.registerOnSharedPreferenceChangeListener(prefListener)
+        updateRepositorySpeed(_typingSpeed.value)
+        setupMediaListener()
+        // Load macros cache once
+        _customMacros.value = loadCustomMacros()
+        macrosCache = _customMacros.value
+        // Ensure service is running for background features.
+        val serviceIntent = Intent(application, HidService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            application.startForegroundService(serviceIntent)
+        } else {
+            application.startService(serviceIntent)
         }
-        getApplication<Application>().startService(intent)
+    }
+
+    private fun setupMediaListener() {
+        RabitNetworkServer.onMediaMetadataReceived = { metadata ->
+            _currentMedia.value = metadata
+        }
     }
 
     fun startScanning() = repository.startScanning()
@@ -120,15 +134,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.sendMouseMove(dx, dy, buttons, wheel)
             return
         }
-        if (abs(dx) < moveThreshold && abs(dy) < moveThreshold) return
+        // Filter out jitter/noise by averaging with last movement
+        val filteredDx = (dx + lastDx) / 2f
+        val filteredDy = (dy + lastDy) / 2f
+        lastDx = dx
+        lastDy = dy
+        if (abs(filteredDx) < moveThreshold && abs(filteredDy) < moveThreshold) return
         val now = System.currentTimeMillis()
         val dt = (now - lastMoveTime).coerceAtLeast(1L)
         lastMoveTime = now
-        val sensitivity = 1.1f 
-        val accelFactor = 1.4f 
-        val finalDx = (sign(dx) * abs(dx).pow(accelFactor) * sensitivity)
-        val finalDy = (sign(dy) * abs(dy).pow(accelFactor) * sensitivity)
+        // Improved sensitivity and acceleration for more natural feel
+        val sensitivity = 1.5f // Increased for more responsive movement
+        val accelFactor = 1.2f // Lowered for smoother acceleration
+        val finalDx = (sign(filteredDx) * abs(filteredDx).pow(accelFactor) * sensitivity)
+        val finalDy = (sign(filteredDy) * abs(filteredDy).pow(accelFactor) * sensitivity)
         repository.sendMouseMove(finalDx, finalDy, buttons, wheel)
+        // TODO: Redesign UI for modern, intuitive UX (Material3, animations, spacing, color, accessibility)
     }
     
     fun pauseTextPush() = repository.pauseTextPush()
@@ -145,13 +166,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.unlockMac(_unlockPassword.value)
     }
 
+    // Optimized macro execution: batch commands, reduce delay
     fun sendMacro(macro: String) {
         viewModelScope.launch {
-            macro.split("&&").forEach { part ->
-                repository.sendText(part.trim())
-                delay(100)
+            val parts = macro.split("&&").map { it.trim() }.filter { it.isNotEmpty() }
+            for (part in parts) {
+                repository.sendText(part)
                 repository.sendKey(HidKeyCodes.KEY_ENTER)
-                delay(300)
+                delay(120) // Reduced delay for faster execution
             }
         }
     }
@@ -171,16 +193,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Custom Macros Logic
     fun addCustomMacro(name: String, command: String) {
-        val newList = _customMacros.value + CustomMacro(name, command)
+        val newList = (_customMacros.value + CustomMacro(name, command)).distinctBy { it.name }
         _customMacros.value = newList
+        macrosCache = newList
         saveCustomMacros(newList)
     }
 
     fun deleteCustomMacro(macro: CustomMacro) {
-        val newList = _customMacros.value - macro
+        val newList = _customMacros.value.filterNot { it.name == macro.name && it.command == macro.command }
         _customMacros.value = newList
+        macrosCache = newList
         saveCustomMacros(newList)
     }
 
@@ -197,6 +220,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun loadCustomMacros(): List<CustomMacro> {
+        macrosCache?.let { return it }
         val json = prefs.getString("custom_macros_json", null) ?: return emptyList()
         return try {
             val array = JSONArray(json)
@@ -205,6 +229,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val obj = array.getJSONObject(i)
                 list.add(CustomMacro(obj.getString("name"), obj.getString("command")))
             }
+            macrosCache = list
             list
         } catch (e: Exception) {
             emptyList()
@@ -232,6 +257,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _notificationSyncEnabled.value = enabled
     }
 
+    fun setAutoPushEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("auto_push_enabled", enabled).apply()
+        _autoPushEnabled.value = enabled
+    }
+
     private fun updateRepositorySpeed(speed: String) {
         val delay = when(speed) {
             "Too Slow" -> 250L
@@ -242,6 +272,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             else -> 120L
         }
         HidDeviceManager.getInstance(getApplication()).typingDelay = delay
+    }
+
+    override fun onCleared() {
+        prefs.unregisterOnSharedPreferenceChangeListener(prefListener)
+        super.onCleared()
     }
 }
 

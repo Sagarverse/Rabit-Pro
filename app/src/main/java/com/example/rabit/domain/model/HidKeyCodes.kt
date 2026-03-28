@@ -72,15 +72,6 @@ object HidKeyCodes {
     const val KEY_F11: Byte = 0x44
     const val KEY_F12: Byte = 0x45
     
-    const val KEY_PRINT_SCREEN: Byte = 0x46
-    const val KEY_SCROLL_LOCK: Byte = 0x47
-    const val KEY_PAUSE: Byte = 0x48
-    const val KEY_INSERT: Byte = 0x49
-    const val KEY_HOME: Byte = 0x4A
-    const val KEY_PAGE_UP: Byte = 0x4B
-    const val KEY_DELETE: Byte = 0x4C
-    const val KEY_END: Byte = 0x4D
-    const val KEY_PAGE_DOWN: Byte = 0x4E
     const val KEY_RIGHT: Byte = 0x4F
     const val KEY_LEFT: Byte = 0x50
     const val KEY_DOWN: Byte = 0x51
@@ -90,11 +81,7 @@ object HidKeyCodes {
     const val MODIFIER_LEFT_CTRL: Byte = 0x01
     const val MODIFIER_LEFT_SHIFT: Byte = 0x02
     const val MODIFIER_LEFT_ALT: Byte = 0x04
-    const val MODIFIER_LEFT_GUI: Byte = 0x08 // Command on Mac, Win on Windows
-    const val MODIFIER_RIGHT_CTRL: Byte = 0x10.toByte()
-    const val MODIFIER_RIGHT_SHIFT: Byte = 0x20.toByte()
-    const val MODIFIER_RIGHT_ALT: Byte = 0x40.toByte()
-    const val MODIFIER_RIGHT_GUI: Byte = 0x80.toByte()
+    const val MODIFIER_LEFT_GUI: Byte = 0x08 
 
     // Consumer Control Keys (Usage Page 0x0C)
     const val MEDIA_PLAY_PAUSE: Short = 0x00CD
@@ -104,6 +91,10 @@ object HidKeyCodes {
     const val MEDIA_VOL_UP: Short = 0x00E9
     const val MEDIA_VOL_DOWN: Short = 0x00EA
     const val MEDIA_MUTE: Short = 0x00E2
+    
+    // Display Brightness (Consumer Page)
+    const val BRIGHTNESS_UP: Short = 0x006F
+    const val BRIGHTNESS_DOWN: Short = 0x0070
     
     // Telephony Keys (Usage Page 0x0C)
     const val CALL_ANSWER: Short = 0x01B1.toShort()
