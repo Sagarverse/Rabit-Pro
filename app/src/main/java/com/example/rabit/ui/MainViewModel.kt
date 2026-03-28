@@ -34,6 +34,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val scannedDevices: StateFlow<Set<BluetoothDevice>> = repository.scannedDevices
     val isScanning: StateFlow<Boolean> = repository.isScanning
     val isPushPaused: StateFlow<Boolean> = repository.isPushPaused
+    val isTextPushing: StateFlow<Boolean> = repository.isTextPushing
 
     private val _unlockPassword = MutableStateFlow(prefs.getString("unlock_password", "6202") ?: "6202")
     val unlockPassword = _unlockPassword.asStateFlow()
@@ -52,6 +53,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _autoPushEnabled = MutableStateFlow(prefs.getBoolean("auto_push_enabled", false))
     val autoPushEnabled = _autoPushEnabled.asStateFlow()
+
+    // Vibration toggle
+    private val _vibrationEnabled = MutableStateFlow(prefs.getBoolean("vibration_enabled", true))
+    val vibrationEnabled = _vibrationEnabled.asStateFlow()
+
+    // Trackpad sensitivity (0.5f to 3.0f)
+    private val _trackpadSensitivity = MutableStateFlow(prefs.getFloat("trackpad_sensitivity", 1.5f))
+    val trackpadSensitivity = _trackpadSensitivity.asStateFlow()
+
+    // Text push progress
+    private val _pushProgress = MutableStateFlow(0f)
+    val pushProgress = _pushProgress.asStateFlow()
+
+    // Saved devices
+    private val _savedDevices = MutableStateFlow<List<SavedDevice>>(emptyList())
+    val savedDevices = _savedDevices.asStateFlow()
+
+    // Onboarding completed
+    val onboardingCompleted: Boolean
+        get() = prefs.getBoolean("onboarding_completed", false)
+
+    fun markOnboardingCompleted() {
+        prefs.edit().putBoolean("onboarding_completed", true).apply()
+    }
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
         when (key) {
@@ -78,7 +103,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Trackpad optimization
     private var lastMoveTime = 0L
-    private val moveThreshold = 0.2f // Lower threshold for more precise small movements
+    private val moveThreshold = 0.2f
     private var lastDx = 0f
     private var lastDy = 0f
 
@@ -86,15 +111,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.registerOnSharedPreferenceChangeListener(prefListener)
         updateRepositorySpeed(_typingSpeed.value)
         setupMediaListener()
-        // Load macros cache once
         _customMacros.value = loadCustomMacros()
         macrosCache = _customMacros.value
-        // Ensure service is running for background features.
+        _savedDevices.value = loadSavedDevices()
+        
         val serviceIntent = Intent(application, HidService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             application.startForegroundService(serviceIntent)
         } else {
             application.startService(serviceIntent)
+        }
+
+        // Save device when connected
+        viewModelScope.launch {
+            connectionState.collect { state ->
+                if (state is HidDeviceManager.ConnectionState.Connected) {
+                    saveDevice(state.deviceName, "")
+                }
+            }
         }
     }
 
@@ -134,22 +168,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.sendMouseMove(dx, dy, buttons, wheel)
             return
         }
-        // Filter out jitter/noise by averaging with last movement
-        val filteredDx = (dx + lastDx) / 2f
-        val filteredDy = (dy + lastDy) / 2f
-        lastDx = dx
-        lastDy = dy
-        if (abs(filteredDx) < moveThreshold && abs(filteredDy) < moveThreshold) return
-        val now = System.currentTimeMillis()
-        val dt = (now - lastMoveTime).coerceAtLeast(1L)
-        lastMoveTime = now
-        // Improved sensitivity and acceleration for more natural feel
-        val sensitivity = 1.5f // Increased for more responsive movement
-        val accelFactor = 1.2f // Lowered for smoother acceleration
-        val finalDx = (sign(filteredDx) * abs(filteredDx).pow(accelFactor) * sensitivity)
-        val finalDy = (sign(filteredDy) * abs(filteredDy).pow(accelFactor) * sensitivity)
+        
+        // Remove recursive dx filtering to avoid momentum drift
+        val sensitivity = _trackpadSensitivity.value
+        val accelFactor = 1.15f
+        
+        // Precise low-speed translation, accelerated high-speed translation
+        val finalDx = sign(dx) * abs(dx).pow(accelFactor) * sensitivity
+        val finalDy = sign(dy) * abs(dy).pow(accelFactor) * sensitivity
+        
         repository.sendMouseMove(finalDx, finalDy, buttons, wheel)
-        // TODO: Redesign UI for modern, intuitive UX (Material3, animations, spacing, color, accessibility)
+    }
+
+    fun resetMouse() {
+        repository.resetMouseAccumulator()
     }
     
     fun pauseTextPush() = repository.pauseTextPush()
@@ -166,14 +198,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.unlockMac(_unlockPassword.value)
     }
 
-    // Optimized macro execution: batch commands, reduce delay
     fun sendMacro(macro: String) {
         viewModelScope.launch {
             val parts = macro.split("&&").map { it.trim() }.filter { it.isNotEmpty() }
             for (part in parts) {
                 repository.sendText(part)
                 repository.sendKey(HidKeyCodes.KEY_ENTER)
-                delay(120) // Reduced delay for faster execution
+                delay(120)
             }
         }
     }
@@ -193,6 +224,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ── Custom Macros ──
+
     fun addCustomMacro(name: String, command: String) {
         val newList = (_customMacros.value + CustomMacro(name, command)).distinctBy { it.name }
         _customMacros.value = newList
@@ -205,6 +238,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _customMacros.value = newList
         macrosCache = newList
         saveCustomMacros(newList)
+    }
+
+    fun exportMacrosJson(): String {
+        val array = JSONArray()
+        _customMacros.value.forEach {
+            array.put(JSONObject().apply {
+                put("name", it.name)
+                put("command", it.command)
+            })
+        }
+        return array.toString(2)
+    }
+
+    fun importMacrosJson(json: String): Boolean {
+        return try {
+            val array = JSONArray(json)
+            val imported = (0 until array.length()).map { i ->
+                val obj = array.getJSONObject(i)
+                CustomMacro(obj.getString("name"), obj.getString("command"))
+            }
+            val merged = (_customMacros.value + imported).distinctBy { it.name }
+            _customMacros.value = merged
+            macrosCache = merged
+            saveCustomMacros(merged)
+            true
+        } catch (e: Exception) { false }
     }
 
     private fun saveCustomMacros(macros: List<CustomMacro>) {
@@ -236,6 +295,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ── Saved Devices ──
+
+    fun saveDevice(name: String, address: String) {
+        val existing = _savedDevices.value.toMutableList()
+        existing.removeAll { it.name == name }
+        existing.add(0, SavedDevice(name, address, System.currentTimeMillis()))
+        if (existing.size > 10) existing.removeAt(existing.size - 1) // Keep max 10
+        _savedDevices.value = existing
+        saveSavedDevices(existing)
+    }
+
+    fun removeSavedDevice(device: SavedDevice) {
+        val list = _savedDevices.value.filterNot { it.name == device.name }
+        _savedDevices.value = list
+        saveSavedDevices(list)
+    }
+
+    private fun loadSavedDevices(): List<SavedDevice> {
+        val json = prefs.getString("saved_devices_json", null) ?: return emptyList()
+        return try {
+            val array = JSONArray(json)
+            (0 until array.length()).map { i ->
+                val obj = array.getJSONObject(i)
+                SavedDevice(
+                    obj.getString("name"),
+                    obj.optString("address", ""),
+                    obj.optLong("lastConnected", 0L)
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    private fun saveSavedDevices(devices: List<SavedDevice>) {
+        val array = JSONArray()
+        devices.forEach { d ->
+            array.put(JSONObject().apply {
+                put("name", d.name)
+                put("address", d.address)
+                put("lastConnected", d.lastConnected)
+            })
+        }
+        prefs.edit().putString("saved_devices_json", array.toString()).apply()
+    }
+
+    // ── Settings ──
+
     fun setUnlockPassword(password: String) {
         prefs.edit().putString("unlock_password", password).apply()
         _unlockPassword.value = password
@@ -262,6 +367,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _autoPushEnabled.value = enabled
     }
 
+    fun setVibrationEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("vibration_enabled", enabled).apply()
+        _vibrationEnabled.value = enabled
+    }
+
+    fun setTrackpadSensitivity(sensitivity: Float) {
+        prefs.edit().putFloat("trackpad_sensitivity", sensitivity).apply()
+        _trackpadSensitivity.value = sensitivity
+    }
+
     private fun updateRepositorySpeed(speed: String) {
         val delay = when(speed) {
             "Too Slow" -> 250L
@@ -281,3 +396,4 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 }
 
 data class CustomMacro(val name: String, val command: String)
+data class SavedDevice(val name: String, val address: String, val lastConnected: Long)

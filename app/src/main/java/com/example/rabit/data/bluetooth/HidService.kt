@@ -5,8 +5,6 @@ import android.bluetooth.BluetoothDevice
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.hardware.Sensor
-import android.hardware.SensorManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -17,7 +15,6 @@ import com.example.rabit.MainActivity
 import com.example.rabit.data.automation.AutomationManager
 import com.example.rabit.data.network.MediaNotificationManager
 import com.example.rabit.data.network.RabitNetworkServer
-import com.example.rabit.domain.model.HidKeyCodes
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.StateFlow
 
@@ -32,10 +29,6 @@ class HidService : Service() {
     private lateinit var automationManager: AutomationManager
     private lateinit var encryptionManager: com.example.rabit.data.secure.EncryptionManager
 
-    private lateinit var sensorManager: SensorManager
-    private var shakeDetector: ShakeDetector? = null
-    private var isShakeEnabled = false
-
     private lateinit var clipboard: ClipboardManager
     private var lastClipboardText: String? = null
     private var clipboardJob: Job? = null
@@ -47,11 +40,10 @@ class HidService : Service() {
     override fun onCreate() {
         super.onCreate()
         hidDeviceManager = HidDeviceManager.getInstance(this)
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
         mediaNotificationManager = MediaNotificationManager(this)
-        automationManager = com.example.rabit.data.automation.AutomationManager(this)
+        automationManager = AutomationManager(this)
         encryptionManager = com.example.rabit.data.secure.EncryptionManager(this)
 
         RabitNetworkServer.onMediaMetadataReceived = { metadata ->
@@ -62,7 +54,6 @@ class HidService : Service() {
         createNotificationChannels()
         startForeground(1, buildNotification("Disconnected", "Bluetooth HID connection is inactive."))
         observeConnectionState()
-        setupShakeDetector()
         startClipboardObserver()
     }
 
@@ -100,47 +91,6 @@ class HidService : Service() {
         }
     }
 
-    private fun setupShakeDetector() {
-        val prefs = getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
-        isShakeEnabled = prefs.getBoolean("shake_to_control_calls", false)
-        
-        if (isShakeEnabled) {
-            registerShakeDetector()
-        }
-    }
-
-    private fun registerShakeDetector() {
-        if (shakeDetector == null) {
-            shakeDetector = ShakeDetector { type ->
-                if (hidDeviceManager.connectionState.value is HidDeviceManager.ConnectionState.Connected) {
-                    when (type) {
-                        ShakeDetector.ShakeType.VERTICAL -> {
-                            Log.d("HidService", "Vertical shake: Answering call via HID")
-                            sendConsumerKey(HidKeyCodes.CALL_ANSWER)
-                        }
-                        ShakeDetector.ShakeType.HORIZONTAL -> {
-                            Log.d("HidService", "Horizontal shake: Rejecting call via HID")
-                            sendConsumerKey(HidKeyCodes.CALL_REJECT)
-                        }
-                        else -> {}
-                    }
-                }
-            }
-        }
-        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        sensorManager.registerListener(shakeDetector, accelerometer, SensorManager.SENSOR_DELAY_UI)
-    }
-
-    private fun unregisterShakeDetector() {
-        shakeDetector?.let { sensorManager.unregisterListener(it) }
-    }
-
-    fun setShakeEnabled(enabled: Boolean) {
-        if (isShakeEnabled == enabled) return
-        isShakeEnabled = enabled
-        if (enabled) registerShakeDetector() else unregisterShakeDetector()
-    }
-
     private fun observeConnectionState() {
         serviceScope.launch {
             hidDeviceManager.connectionState.collect { state ->
@@ -166,10 +116,6 @@ class HidService : Service() {
             "SEND_NOTIFICATION" -> {
                 val content = intent.getStringExtra("content") ?: ""
                 sendText(content + "\n")
-            }
-            "UPDATE_SHAKE_SETTINGS" -> {
-                val enabled = intent.getBooleanExtra("enabled", false)
-                setShakeEnabled(enabled)
             }
             "PUSH_CLIPBOARD" -> {
                 val content = intent.getStringExtra("text") ?: ""
@@ -300,7 +246,6 @@ class HidService : Service() {
         mediaNotificationManager.clearNotification()
         automationManager.destroy()
         serviceScope.cancel()
-        unregisterShakeDetector()
         hidDeviceManager.unregister()
         super.onDestroy()
     }

@@ -1,16 +1,15 @@
 package com.example.rabit.ui.assistant
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.rabit.ui.MainViewModel
@@ -31,10 +30,15 @@ fun AssistantScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("AI Assistant", color = Platinum) },
+                title = {
+                    Column {
+                        Text("AI Assistant", color = Platinum, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("Powered by Gemini", color = AccentGold, fontSize = 10.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.sp)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Platinum)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Platinum)
                     }
                 },
                 actions = {
@@ -47,11 +51,10 @@ fun AssistantScreen(
         },
         bottomBar = {
             PremiumBottomBar(
-                selectedTab = -1, // No tab selected in dock for AI screen
+                selectedTab = -1,
                 onNavigateToAssistant = { /* Already here */ },
                 onTabSelected = { 
-                    if (it == 0) onNavigateToKeyboard() 
-                    // Add other tab navigation as needed
+                    onNavigateToKeyboard()
                 }
             )
         },
@@ -61,12 +64,14 @@ fun AssistantScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             PromptInputSection(viewModel)
             ResponseOutputSection(uiState, viewModel)
             AssistantHistorySection()
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }

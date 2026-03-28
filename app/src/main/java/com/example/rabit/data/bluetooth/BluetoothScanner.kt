@@ -84,13 +84,9 @@ class BluetoothScanner(private val context: Context) {
         val adapter = bluetoothAdapter ?: return
         
         if (!adapter.isEnabled) {
-            try {
-                adapter.enable()
-                handler.postDelayed({ startScanning() }, 1000)
-                return
-            } catch (e: Exception) {
-                Log.e("BluetoothScanner", "Failed to enable Bluetooth", e)
-            }
+            // Cannot programmatically enable BT on Android 13+.
+            // PairingScreen will direct user to system Bluetooth settings.
+            return
         }
 
         // Start Classic Discovery

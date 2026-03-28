@@ -24,8 +24,11 @@ import com.example.rabit.ui.MainViewModel
 import com.example.rabit.ui.assistant.AssistantScreen
 import com.example.rabit.ui.assistant.AssistantViewModel
 import com.example.rabit.ui.keyboard.KeyboardScreen
+import com.example.rabit.ui.onboarding.OnboardingScreen
 import com.example.rabit.ui.pairing.PairingScreen
 import com.example.rabit.ui.settings.SettingsScreen
+import com.example.rabit.ui.shortcuts.ShortcutsGuideScreen
+import com.example.rabit.ui.snippets.SnippetsScreen
 import com.example.rabit.ui.theme.RabitTheme
 
 class MainActivity : ComponentActivity() {
@@ -56,8 +59,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewModel) {
     val navController = rememberNavController()
+    val startDest = if (viewModel.onboardingCompleted) "pairing" else "onboarding"
 
-    NavHost(navController = navController, startDestination = "pairing") {
+    NavHost(navController = navController, startDestination = startDest) {
+        composable("onboarding") {
+            OnboardingScreen(
+                onComplete = {
+                    viewModel.markOnboardingCompleted()
+                    navController.navigate("pairing") {
+                        popUpTo("onboarding") { inclusive = true }
+                    }
+                }
+            )
+        }
         composable("pairing") {
             PairingScreen(
                 viewModel = viewModel, 
@@ -70,7 +84,9 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                 viewModel = viewModel, 
                 onDisconnect = { navController.popBackStack() },
                 onNavigateToSettings = { navController.navigate("settings") },
-                onNavigateToAssistant = { navController.navigate("assistant") }
+                onNavigateToAssistant = { navController.navigate("assistant") },
+                onNavigateToSnippets = { navController.navigate("snippets") },
+                onNavigateToShortcuts = { navController.navigate("shortcuts") }
             )
         }
         composable("assistant") {
@@ -88,6 +104,12 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
         }
         composable("settings") {
             SettingsScreen(viewModel, onBack = { navController.popBackStack() })
+        }
+        composable("snippets") {
+            SnippetsScreen(viewModel, onBack = { navController.popBackStack() })
+        }
+        composable("shortcuts") {
+            ShortcutsGuideScreen(viewModel, onBack = { navController.popBackStack() })
         }
     }
 }

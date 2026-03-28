@@ -9,6 +9,7 @@ interface KeyboardRepository {
     val scannedDevices: StateFlow<Set<BluetoothDevice>>
     val isScanning: StateFlow<Boolean>
     val isPushPaused: StateFlow<Boolean>
+    val isTextPushing: StateFlow<Boolean>
     
     fun startScanning()
     fun stopScanning()
@@ -20,6 +21,7 @@ interface KeyboardRepository {
     fun sendConsumerKey(usageId: Short)
     fun sendText(text: String)
     fun sendMouseMove(dx: Float, dy: Float, buttons: Int = 0, wheel: Int = 0)
+    fun resetMouseAccumulator()
     fun stopTextPush()
     fun pauseTextPush()
     fun resumeTextPush()

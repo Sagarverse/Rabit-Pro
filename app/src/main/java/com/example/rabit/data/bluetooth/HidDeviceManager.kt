@@ -43,6 +43,9 @@ class HidDeviceManager private constructor(private val context: Context) {
     private val _isPushPaused = MutableStateFlow(false)
     val isPushPaused: StateFlow<Boolean> = _isPushPaused.asStateFlow()
 
+    private val _isTextPushing = MutableStateFlow(false)
+    val isTextPushing: StateFlow<Boolean> = _isTextPushing.asStateFlow()
+
     private var mouseAccumX = 0f
     private var mouseAccumY = 0f
 
@@ -228,6 +231,11 @@ class HidDeviceManager private constructor(private val context: Context) {
         }
     }
 
+    fun resetMouseAccumulator() {
+        mouseAccumX = 0f
+        mouseAccumY = 0f
+    }
+
     fun sendMouseMove(dx: Float, dy: Float, buttons: Int = 0, wheel: Int = 0) {
         mouseAccumX += dx
         mouseAccumY += dy
@@ -252,16 +260,21 @@ class HidDeviceManager private constructor(private val context: Context) {
     fun sendText(text: String) {
         textPushJob?.cancel()
         _isPushPaused.value = false
+        _isTextPushing.value = true
         textPushJob = scope.launch {
-            text.forEach { char ->
-                while (_isPushPaused.value) {
-                    delay(100)
+            try {
+                text.forEach { char ->
+                    while (_isPushPaused.value) {
+                        delay(100)
+                    }
+                    val model = com.example.rabit.domain.model.HidKeyCodes.getHidCode(char)
+                    if (model.keyCode != 0.toByte() || model.modifier != 0.toByte()) {
+                        sendKeyPress(model.keyCode, model.modifier, useSticky = false)
+                        delay(typingDelay) 
+                    }
                 }
-                val model = com.example.rabit.domain.model.HidKeyCodes.getHidCode(char)
-                if (model.keyCode != 0.toByte() || model.modifier != 0.toByte()) {
-                    sendKeyPress(model.keyCode, model.modifier, useSticky = false)
-                    delay(typingDelay) 
-                }
+            } finally {
+                _isTextPushing.value = false
             }
         }
     }
@@ -277,6 +290,7 @@ class HidDeviceManager private constructor(private val context: Context) {
     fun stopTextPush() {
         textPushJob?.cancel()
         _isPushPaused.value = false
+        _isTextPushing.value = false
         reportChannel.trySend(ReportRequest(1, ByteArray(8)))
     }
 

@@ -29,9 +29,16 @@ class LocalLlmManager(private val context: Context) {
             Log.d("LocalLlmManager", "Attempting to load model from: $modelPath")
             llmInference?.close()
 
+            // Check file size to ensure it wasn't partially copied
+            val file = File(modelPath)
+            if (file.exists() && file.length() < 100_000_000L) {
+                initializationError = "File too small (${file.length()} bytes). Appears corrupted or incomplete download."
+                return@withContext false
+            }
+
             val options = LlmInference.LlmInferenceOptions.builder()
                 .setModelPath(modelPath)
-                .setMaxTokens(1024)
+                .setMaxTokens(512) // Lower KV cache to prevent OOM errors on init
                 .setTemperature(0.7f)
                 .build()
 
@@ -41,9 +48,10 @@ class LocalLlmManager(private val context: Context) {
             Log.d("LocalLlmManager", "Model loaded successfully!")
             true
         } catch (e: Exception) {
-            val errorMsg = e.message ?: "Unknown MediaPipe error"
-            initializationError = "MediaPipe Error: $errorMsg. Ensure the file is a valid MediaPipe-converted .bin file."
-            Log.e("LocalLlmManager", "Initialization failed: $errorMsg", e)
+            val errorMsg = e.message ?: "Unknown Error"
+            val type = e.javaClass.simpleName
+            initializationError = "Failed ($type): $errorMsg\nIf it says incompatible, the model file is corrupt, built for CPU instead of GPU, or your device lacks enough RAM/Vulkan support."
+            Log.e("LocalLlmManager", "Initialization failed", e)
             false
         }
     }
@@ -73,8 +81,9 @@ class LocalLlmManager(private val context: Context) {
     private fun copyFileToInternal(uri: Uri): String? {
         return try {
             val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            // We use a fixed name to avoid filling up storage with multiple copies
-            val file = File(context.cacheDir, "mediapipe_model_cache.bin")
+            // Use filesDir instead of cacheDir! Android aggressively auto-deletes 1.5GB cache files 
+            // resulting in truncated "incompatible" flatbuffers.
+            val file = File(context.filesDir, "mediapipe_model.bin")
             file.outputStream().use { outputStream ->
                 inputStream.copyTo(outputStream)
             }

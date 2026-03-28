@@ -15,6 +15,7 @@ class KeyboardRepositoryImpl(context: Context) : KeyboardRepository {
     override val scannedDevices: StateFlow<Set<BluetoothDevice>> = bluetoothScanner.scannedDevices
     override val isScanning: StateFlow<Boolean> = bluetoothScanner.isScanning
     override val isPushPaused: StateFlow<Boolean> = hidDeviceManager.isPushPaused
+    override val isTextPushing: StateFlow<Boolean> = hidDeviceManager.isTextPushing
 
     override fun startScanning() {
         bluetoothScanner.startScanning()
@@ -54,6 +55,10 @@ class KeyboardRepositoryImpl(context: Context) : KeyboardRepository {
 
     override fun sendMouseMove(dx: Float, dy: Float, buttons: Int, wheel: Int) {
         hidDeviceManager.sendMouseMove(dx, dy, buttons, wheel)
+    }
+
+    override fun resetMouseAccumulator() {
+        hidDeviceManager.resetMouseAccumulator()
     }
 
     override fun stopTextPush() {
