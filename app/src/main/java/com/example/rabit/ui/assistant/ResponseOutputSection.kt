@@ -110,12 +110,12 @@ fun ResponseOutputSection(uiState: AssistantUiState, viewModel: AssistantViewMod
 fun GeminiResponseBox(response: GeminiResponse, viewModel: AssistantViewModel) {
     val context = LocalContext.current
     val autoPush by viewModel.autoPushEnabled.collectAsState()
+    val isSpeaking by viewModel.isSpeaking.collectAsState()
     val hidManager = remember { BluetoothHidServiceProvider.getInstance(context) }
 
     LaunchedEffect(response.text) {
         if (response.text.isNotBlank()) {
             AssistantNotifier.showNotification(context, response.text)
-            AssistantNotifier.playSound(context)
             AssistantNotifier.vibrate(context)
         }
     }
@@ -136,13 +136,53 @@ fun GeminiResponseBox(response: GeminiResponse, viewModel: AssistantViewModel) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Response text
+            // USER PROMPT CONTEXT
+            if (response.promptText.isNotBlank() || response.attachedImageUris.isNotEmpty()) {
+                Surface(
+                    color = Obsidian.copy(alpha = 0.3f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        if (response.attachedImageUris.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier.padding(bottom = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                response.attachedImageUris.forEach { uri ->
+                                    Box {
+                                        coil.compose.AsyncImage(
+                                            model = coil.request.ImageRequest.Builder(context).data(uri).crossfade(true).build(),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(60.dp).clip(RoundedCornerShape(8.dp)),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (response.promptText.isNotBlank()) {
+                            Text(
+                                text = response.promptText,
+                                color = Silver.copy(alpha = 0.8f),
+                                fontSize = 13.sp,
+                                maxLines = 3,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+                HorizontalDivider(thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.2f))
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // Response text area
             Box(
                 modifier = Modifier
                     .heightIn(max = 220.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                Text(response.text, color = Platinum, fontSize = 15.sp, lineHeight = 22.sp)
+                com.example.rabit.ui.components.MarkdownText(text = response.text, color = Platinum, fontSize = 15f)
             }
             
             Spacer(modifier = Modifier.height(14.dp))
@@ -177,11 +217,26 @@ fun GeminiResponseBox(response: GeminiResponse, viewModel: AssistantViewModel) {
                     }, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Default.Share, contentDescription = "Share", tint = Silver, modifier = Modifier.size(18.dp))
                     }
+                    // Speak
+                    IconButton(onClick = { viewModel.speakText(response.text) }, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            if (isSpeaking) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                            contentDescription = "Play Aloud",
+                            tint = if (isSpeaking) AccentBlue else Silver,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
                 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Auto", color = Silver.copy(alpha = 0.6f), fontSize = 11.sp)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Auto-Push Toggle with Label
+                    Row(
+                        modifier = Modifier
+                            .background(SoftGrey.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("AUTO", color = Silver.copy(alpha = 0.6f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         Switch(
                             checked = autoPush,
                             onCheckedChange = { viewModel.setAutoPushEnabled(it) },
@@ -194,16 +249,19 @@ fun GeminiResponseBox(response: GeminiResponse, viewModel: AssistantViewModel) {
                             )
                         )
                     }
+
+                    // Push Button
                     Button(
                         onClick = { hidManager.sendText(response.text) },
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
-                        modifier = Modifier.height(32.dp),
+                        modifier = Modifier.height(36.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                     ) {
-                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Push", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("PUSH", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

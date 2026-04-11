@@ -11,12 +11,13 @@ import android.os.IBinder
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
-import com.example.rabit.MainActivity
-import com.example.rabit.data.automation.AutomationManager
-import com.example.rabit.data.network.MediaNotificationManager
 import com.example.rabit.data.network.RabitNetworkServer
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.StateFlow
+import org.json.JSONArray
+import org.json.JSONObject
+import com.example.rabit.domain.model.HidKeyCodes
+import com.example.rabit.MainActivity
 
 class HidService : Service() {
 
@@ -25,9 +26,12 @@ class HidService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val channelId = "hid_service_channel"
     private val clipboardChannelId = "clipboard_channel"
-    private lateinit var mediaNotificationManager: MediaNotificationManager
-    private lateinit var automationManager: AutomationManager
     private lateinit var encryptionManager: com.example.rabit.data.secure.EncryptionManager
+    
+    companion object {
+        const val ACTION_START_WEB_BRIDGE = "com.example.rabit.ACTION_START_WEB_BRIDGE"
+        const val ACTION_STOP_WEB_BRIDGE = "com.example.rabit.ACTION_STOP_WEB_BRIDGE"
+    }
 
     private lateinit var clipboard: ClipboardManager
     private var lastClipboardText: String? = null
@@ -42,19 +46,20 @@ class HidService : Service() {
         hidDeviceManager = HidDeviceManager.getInstance(this)
         clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
-        mediaNotificationManager = MediaNotificationManager(this)
-        automationManager = AutomationManager(this)
         encryptionManager = com.example.rabit.data.secure.EncryptionManager(this)
 
-        RabitNetworkServer.onMediaMetadataReceived = { metadata ->
-            serviceScope.launch { mediaNotificationManager.updateMedia(metadata) }
-        }
-        RabitNetworkServer.start(this, encryptionManager)
+        // Legacy network listeners removed for File Hub focus
 
         createNotificationChannels()
         startForeground(1, buildNotification("Disconnected", "Bluetooth HID connection is inactive."))
         observeConnectionState()
         startClipboardObserver()
+        
+        // Check if Web Bridge should auto-start from preferences
+        val prefs = getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("web_bridge_enabled", false)) {
+            RabitNetworkServer.start(this, encryptionManager)
+        }
     }
 
     private fun startClipboardObserver() {
@@ -96,13 +101,11 @@ class HidService : Service() {
             hidDeviceManager.connectionState.collect { state ->
                 val (title, text) = when (state) {
                     is HidDeviceManager.ConnectionState.Connected -> {
-                        automationManager.onConnected()
                         "Connected" to "Active connection to ${state.deviceName}"
                     }
                     is HidDeviceManager.ConnectionState.Connecting ->
                         "Connecting" to "Attempting to connect..."
                     else -> {
-                        automationManager.onDisconnected()
                         "Disconnected" to "Bluetooth HID connection is inactive."
                     }
                 }
@@ -113,6 +116,18 @@ class HidService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_START_WEB_BRIDGE -> {
+                if (!RabitNetworkServer.isRunning) {
+                    RabitNetworkServer.start(this, encryptionManager)
+                    getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE).edit().putBoolean("web_bridge_enabled", true).apply()
+                }
+            }
+            ACTION_STOP_WEB_BRIDGE -> {
+                if (RabitNetworkServer.isRunning) {
+                    RabitNetworkServer.stop()
+                    getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE).edit().putBoolean("web_bridge_enabled", false).apply()
+                }
+            }
             "SEND_NOTIFICATION" -> {
                 val content = intent.getStringExtra("content") ?: ""
                 sendText(content + "\n")
@@ -243,8 +258,6 @@ class HidService : Service() {
 
     override fun onDestroy() {
         RabitNetworkServer.stop()
-        mediaNotificationManager.clearNotification()
-        automationManager.destroy()
         serviceScope.cancel()
         hidDeviceManager.unregister()
         super.onDestroy()

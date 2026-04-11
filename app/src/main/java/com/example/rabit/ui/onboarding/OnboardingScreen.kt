@@ -70,7 +70,21 @@ fun OnboardingScreen(onComplete: () -> Unit) {
             SuccessGreen,
             "Secure & Private",
             "End-to-end encrypted",
-            "All data is AES-GCM 256-bit encrypted. Your keystrokes never leave the Bluetooth connection."
+            "All data is AES-GCM 256-bit encrypted. Your keystrokes never leave the local network."
+        ),
+        OnboardingPage(
+            Icons.Default.AutoAwesome,
+            AccentGold,
+            "Macro Genie",
+            "AI-Powered Automation",
+            "Tell the Genie what you want to do on your Mac, and Rabit will build the HID sequence instantly."
+        ),
+        OnboardingPage(
+            Icons.Default.VpnKey,
+            AccentBlue,
+            "Secure Web Bridge",
+            "Zero-Install Remote Control",
+            "Control your Mac from any browser with a secure 4-digit Pin authentication and session tokens."
         )
     )
 

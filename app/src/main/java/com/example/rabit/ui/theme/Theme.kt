@@ -10,12 +10,12 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = AccentBlue,
-    secondary = AccentGold,
-    tertiary = SuccessGreen,
-    background = Obsidian,
-    surface = Graphite,
-    onPrimary = Color.White,
+    primary = Color.White,
+    secondary = Color(0xFFD1D1D6),
+    tertiary = Color(0xFFE5E5EA),
+    background = Obsidian, // Jet Black
+    surface = Graphite,    // Charcoal Dark
+    onPrimary = Color.Black,
     onSecondary = Color.Black,
     onBackground = Platinum,
     onSurface = Platinum,

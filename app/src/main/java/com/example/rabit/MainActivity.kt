@@ -9,9 +9,23 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,6 +33,7 @@ import androidx.core.content.ContextCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.rabit.data.bluetooth.HidService
 import com.example.rabit.ui.MainViewModel
 import com.example.rabit.ui.assistant.AssistantScreen
@@ -29,6 +44,7 @@ import com.example.rabit.ui.pairing.PairingScreen
 import com.example.rabit.ui.settings.SettingsScreen
 import com.example.rabit.ui.shortcuts.ShortcutsGuideScreen
 import com.example.rabit.ui.snippets.SnippetsScreen
+import com.example.rabit.ui.profile.ProfileScreen
 import com.example.rabit.ui.theme.RabitTheme
 
 class MainActivity : ComponentActivity() {
@@ -37,6 +53,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleIntent(intent)
 
         setContent {
             RabitTheme {
@@ -54,62 +71,121 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) return
+        
+        when (intent.action) {
+            Intent.ACTION_SEND -> {
+                val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+                uri?.let { viewModel.addSharedFile(it) }
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                val uris = intent.getParcelableArrayListExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+                uris?.forEach { viewModel.addSharedFile(it) }
+            }
+        }
+    }
 }
 
 @Composable
 fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewModel) {
     val navController = rememberNavController()
     val startDest = if (viewModel.onboardingCompleted) "pairing" else "onboarding"
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route ?: startDest
 
-    NavHost(navController = navController, startDestination = startDest) {
-        composable("onboarding") {
-            OnboardingScreen(
-                onComplete = {
-                    viewModel.markOnboardingCompleted()
-                    navController.navigate("pairing") {
-                        popUpTo("onboarding") { inclusive = true }
+    // Routes that should NOT show the professional drawer (Onboarding & Initial Pairing)
+    val noDrawerRoutes = listOf("onboarding", "pairing", "onboarding_splash")
+
+    if (currentRoute in noDrawerRoutes) {
+        NavHost(navController = navController, startDestination = startDest) {
+            composable("onboarding") {
+                OnboardingScreen(
+                    onComplete = {
+                        viewModel.markOnboardingCompleted()
+                        navController.navigate("pairing") {
+                            popUpTo("onboarding") { inclusive = true }
+                        }
+                    }
+                )
+            }
+            composable("pairing") {
+                PairingScreen(
+                    viewModel = viewModel,
+                    onConnected = { navController.navigate("keyboard") },
+                    onNavigateToSettings = { navController.navigate("settings") },
+                    onNavigateToAssistant = { 
+                        navController.navigate("assistant")
+                    },
+                    onNavigateToWebBridge = { navController.navigate("web_bridge") }
+                )
+            }
+        }
+    } else {
+        // Main Application Hub with Professional Drawer
+        com.example.rabit.ui.components.RabitAppScaffold(
+            currentRoute = if (currentRoute == "keyboard") "main" else currentRoute,
+            onNavigate = { route ->
+                val target = if (route == "main") "keyboard" else route
+                navController.navigate(target) {
+                    popUpTo("keyboard") { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            }
+        ) { padding ->
+            Box(modifier = Modifier.padding(padding)) {
+                NavHost(navController = navController, startDestination = "keyboard") {
+                    composable("keyboard") {
+                        KeyboardScreen(
+                            viewModel = viewModel,
+                            onDisconnect = { navController.navigate("pairing") { popUpTo(0) } },
+                            onNavigateToSettings = { navController.navigate("settings") },
+                            onNavigateToAssistant = { navController.navigate("assistant") },
+                            onNavigateToSnippets = { navController.navigate("snippets") },
+                            onNavigateToShortcuts = { navController.navigate("shortcuts") },
+                            onNavigateToWebBridge = { navController.navigate("web_bridge") }
+                        )
+                    }
+                    composable("web_bridge") {
+                        com.example.rabit.ui.webbridge.WebBridgeScreen(
+                            viewModel = viewModel,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable("assistant") {
+                        AssistantScreen(
+                            viewModel = assistantViewModel,
+                            mainViewModel = viewModel,
+                            onBack = { navController.popBackStack() },
+                            onNavigateToSettings = { navController.navigate("settings") },
+                            onNavigateToKeyboard = { navController.navigate("keyboard") }
+                        )
+                    }
+                    composable("settings") {
+                        SettingsScreen(
+                            viewModel,
+                            onBack = { navController.popBackStack() },
+                            onNavigateToProfile = { navController.navigate("profile") }
+                        )
+                    }
+                    composable("profile") {
+                        ProfileScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable("snippets") {
+                        SnippetsScreen(viewModel, onBack = { navController.popBackStack() })
+                    }
+                    composable("shortcuts") {
+                        ShortcutsGuideScreen(viewModel, onBack = { navController.popBackStack() })
                     }
                 }
-            )
-        }
-        composable("pairing") {
-            PairingScreen(
-                viewModel = viewModel, 
-                onConnected = { navController.navigate("keyboard") },
-                onNavigateToSettings = { navController.navigate("settings") }
-            )
-        }
-        composable("keyboard") {
-            KeyboardScreen(
-                viewModel = viewModel, 
-                onDisconnect = { navController.popBackStack() },
-                onNavigateToSettings = { navController.navigate("settings") },
-                onNavigateToAssistant = { navController.navigate("assistant") },
-                onNavigateToSnippets = { navController.navigate("snippets") },
-                onNavigateToShortcuts = { navController.navigate("shortcuts") }
-            )
-        }
-        composable("assistant") {
-            AssistantScreen(
-                viewModel = assistantViewModel,
-                mainViewModel = viewModel,
-                onBack = { navController.popBackStack() },
-                onNavigateToSettings = { navController.navigate("settings") },
-                onNavigateToKeyboard = { 
-                    navController.navigate("keyboard") {
-                        popUpTo("keyboard") { inclusive = true }
-                    }
-                }
-            )
-        }
-        composable("settings") {
-            SettingsScreen(viewModel, onBack = { navController.popBackStack() })
-        }
-        composable("snippets") {
-            SnippetsScreen(viewModel, onBack = { navController.popBackStack() })
-        }
-        composable("shortcuts") {
-            ShortcutsGuideScreen(viewModel, onBack = { navController.popBackStack() })
+            }
         }
     }
 }
@@ -117,8 +193,9 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
 @Composable
 fun BluetoothPermissions(content: @Composable () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    
-    val permissions = mutableListOf<String>().apply {
+
+    // Only require critical Bluetooth permissions to show app content
+    val criticalPermissions = mutableListOf<String>().apply {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             add(Manifest.permission.BLUETOOTH_SCAN)
             add(Manifest.permission.BLUETOOTH_CONNECT)
@@ -126,18 +203,21 @@ fun BluetoothPermissions(content: @Composable () -> Unit) {
             add(Manifest.permission.BLUETOOTH)
             add(Manifest.permission.BLUETOOTH_ADMIN)
         }
-        add(Manifest.permission.ACCESS_FINE_LOCATION)
-        add(Manifest.permission.ACCESS_COARSE_LOCATION)
+    }
+
+    // Optional permissions (requested but not blocking)
+    val optionalPermissions = mutableListOf<String>().apply {
         add(Manifest.permission.RECORD_AUDIO)
         add(Manifest.permission.VIBRATE)
-        add(Manifest.permission.READ_PHONE_STATE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             add(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
-    var permissionsGranted by remember {
-        mutableStateOf(permissions.all {
+    val allPermissions = (criticalPermissions + optionalPermissions).toTypedArray()
+
+    var criticalGranted by remember {
+        mutableStateOf(criticalPermissions.all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         })
     }
@@ -145,20 +225,58 @@ fun BluetoothPermissions(content: @Composable () -> Unit) {
     val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
-        permissionsGranted = result.values.all { it }
+        criticalGranted = criticalPermissions.all { result[it] == true }
     }
 
     LaunchedEffect(Unit) {
-        if (!permissionsGranted) {
-            permissionLauncher.launch(permissions.toTypedArray())
+        val anyMissing = allPermissions.any {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (anyMissing) {
+            permissionLauncher.launch(allPermissions)
         }
     }
 
-    if (permissionsGranted) {
+    if (criticalGranted) {
         content()
     } else {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Please grant required permissions to use Rabit.")
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.padding(32.dp)
+            ) {
+                Icon(
+                    Icons.Default.Bluetooth,
+                    contentDescription = null,
+                    tint = Color(0xFF0A84FF),
+                    modifier = Modifier.size(48.dp)
+                )
+                Text(
+                    "Bluetooth Permission Required",
+                    color = Color(0xFFF2F2F7),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    "Rabit needs Bluetooth access to connect to your Mac.",
+                    color = Color(0xFF8E8E93),
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center
+                )
+                Button(
+                    onClick = { permissionLauncher.launch(allPermissions) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF0A84FF)
+                    )
+                ) {
+                    Text("Grant Permission", color = Color.White)
+                }
+            }
         }
     }
 }

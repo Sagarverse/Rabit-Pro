@@ -33,6 +33,10 @@ class KeyboardRepositoryImpl(context: Context) : KeyboardRepository {
         hidDeviceManager.connect(device)
     }
 
+    override fun connectWithRetry(device: BluetoothDevice, maxRetries: Int, retryDelayMs: Long) {
+        hidDeviceManager.connectWithRetry(device, maxRetries, retryDelayMs)
+    }
+
     override fun disconnect() {
         hidDeviceManager.disconnect()
     }

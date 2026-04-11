@@ -13,10 +13,15 @@ import com.example.rabit.domain.repository.KeyboardRepository
 import com.example.rabit.data.bluetooth.HidDeviceManager
 import com.example.rabit.data.bluetooth.HidService
 import com.example.rabit.data.network.RabitNetworkServer
+import com.example.rabit.data.network.WebRtcManager
+import com.example.rabit.data.gemini.LocalLlmManager
 import com.example.rabit.domain.model.HidKeyCodes
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -28,6 +33,7 @@ import kotlin.math.sign
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: KeyboardRepository = KeyboardRepositoryImpl(application)
+    private val localLlmManager = LocalLlmManager(application)
     private val prefs = application.getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
 
     val connectionState: StateFlow<HidDeviceManager.ConnectionState> = repository.connectionState
@@ -54,6 +60,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _autoPushEnabled = MutableStateFlow(prefs.getBoolean("auto_push_enabled", false))
     val autoPushEnabled = _autoPushEnabled.asStateFlow()
 
+    private val _webBridgeEnabled = MutableStateFlow(prefs.getBoolean("web_bridge_enabled", false))
+    val webBridgeEnabled = _webBridgeEnabled.asStateFlow()
+
+    private val _webBridgeRunning = MutableStateFlow(RabitNetworkServer.isRunning)
+    val isWebBridgeRunning: StateFlow<Boolean> = _webBridgeRunning.asStateFlow()
+
+    private val _webBridgePin = MutableStateFlow(RabitNetworkServer.currentPin)
+    val webBridgePin: StateFlow<String> = _webBridgePin.asStateFlow()
+
     // Vibration toggle
     private val _vibrationEnabled = MutableStateFlow(prefs.getBoolean("vibration_enabled", true))
     val vibrationEnabled = _vibrationEnabled.asStateFlow()
@@ -61,6 +76,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Trackpad sensitivity (0.5f to 3.0f)
     private val _trackpadSensitivity = MutableStateFlow(prefs.getFloat("trackpad_sensitivity", 1.5f))
     val trackpadSensitivity = _trackpadSensitivity.asStateFlow()
+
+    // Air Mouse
+    private val _airMouseEnabled = MutableStateFlow(false)
+    val airMouseEnabled = _airMouseEnabled.asStateFlow()
+
+    private val _airMouseSensitivity = MutableStateFlow(prefs.getFloat("air_mouse_sensitivity", 18f))
+    val airMouseSensitivity = _airMouseSensitivity.asStateFlow()
 
     // Text push progress
     private val _pushProgress = MutableStateFlow(0f)
@@ -70,12 +92,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _savedDevices = MutableStateFlow<List<SavedDevice>>(emptyList())
     val savedDevices = _savedDevices.asStateFlow()
 
+    // Shared Files for Hub (Phone -> Mac)
+    private val _sharedFiles = MutableStateFlow<List<android.net.Uri>>(emptyList())
+    val sharedFiles = _sharedFiles.asStateFlow()
+
     // Onboarding completed
     val onboardingCompleted: Boolean
         get() = prefs.getBoolean("onboarding_completed", false)
 
     fun markOnboardingCompleted() {
         prefs.edit().putBoolean("onboarding_completed", true).apply()
+    }
+
+    fun addSharedFile(uri: android.net.Uri) {
+        _sharedFiles.value = _sharedFiles.value + uri
+    }
+
+    fun removeSharedFile(uri: android.net.Uri) {
+        _sharedFiles.value = _sharedFiles.value - uri
+    }
+
+    fun clearSharedFiles() {
+        _sharedFiles.value = emptyList()
+    }
+
+    private val _deviceIp = MutableStateFlow("0.0.0.0")
+    val deviceIp = _deviceIp.asStateFlow()
+
+    // P2P Hosting
+    private val webRtcManager = WebRtcManager(application)
+    val p2pPeerId = webRtcManager.peerId
+    val p2pStatus = webRtcManager.connectionStatus
+
+    private val _p2pEnabled = MutableStateFlow(prefs.getBoolean("p2p_enabled", false))
+    val p2pEnabled = _p2pEnabled.asStateFlow()
+
+    private fun generateRandomPin(): String = (1000..9999).random().toString()
+
+    fun regenerateWebBridgePin() {
+        val newPin = generateRandomPin()
+        _webBridgePin.value = newPin
+        RabitNetworkServer.currentPin = newPin
+    }
+
+    fun setDeviceIp(ip: String) {
+        _deviceIp.value = ip
     }
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
@@ -92,34 +153,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Media Sync State
-    private val _currentMedia = MutableStateFlow<RabitNetworkServer.MediaMetadata?>(null)
-    val currentMedia = _currentMedia.asStateFlow()
 
     // Custom Macros State (cached for performance)
     private val _customMacros = MutableStateFlow<List<CustomMacro>>(emptyList())
     val customMacros = _customMacros.asStateFlow()
     private var macrosCache: List<CustomMacro>? = null
 
-    // Trackpad optimization
+    // Trackpad optimization — EMA smoothing state
     private var lastMoveTime = 0L
     private val moveThreshold = 0.2f
     private var lastDx = 0f
     private var lastDy = 0f
+    private var smoothDx = 0f
+    private var smoothDy = 0f
+    private val emaAlpha = 0.45f // Smoothing factor: lower = smoother, higher = more responsive
+
+    private val _localIp = MutableStateFlow("0.0.0.0")
+    val localIp = _localIp.asStateFlow()
 
     init {
         prefs.registerOnSharedPreferenceChangeListener(prefListener)
         updateRepositorySpeed(_typingSpeed.value)
-        setupMediaListener()
+        setupNetworkListeners()
+        refreshLocalIp()
         _customMacros.value = loadCustomMacros()
         macrosCache = _customMacros.value
         _savedDevices.value = loadSavedDevices()
         
-        val serviceIntent = Intent(application, HidService::class.java)
+        val serviceIntent = Intent(getApplication<Application>(), HidService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            application.startForegroundService(serviceIntent)
+            getApplication<Application>().startForegroundService(serviceIntent)
         } else {
-            application.startService(serviceIntent)
+            getApplication<Application>().startService(serviceIntent)
         }
 
         // Save device when connected
@@ -130,22 +195,108 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+
+        // Auto-reconnect on startup if enabled
+        if (_autoReconnectEnabled.value) {
+            viewModelScope.launch {
+                delay(1000) // Give service time to start
+                _savedDevices.value.firstOrNull()?.let { device ->
+                    val bluetoothAdapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
+                    val bondedDevice = try {
+                        bluetoothAdapter?.bondedDevices?.find { it.name == device.name }
+                    } catch (e: Exception) { null }
+                    
+                    if (bondedDevice != null && connectionState.value is HidDeviceManager.ConnectionState.Disconnected) {
+                        repository.connectWithRetry(bondedDevice)
+                    }
+                }
+            }
+        }
     }
 
-    private fun setupMediaListener() {
-        RabitNetworkServer.onMediaMetadataReceived = { metadata ->
-            _currentMedia.value = metadata
+    private fun setupNetworkListeners() {
+        // Legacy listeners removed for File Hub focus
+        // RabitNetworkServer now purely manages bidirectional file sharing
+    }
+
+    fun refreshLocalIp() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+                while (interfaces.hasMoreElements()) {
+                    val iface = interfaces.nextElement()
+                    if (iface.isLoopback || !iface.isUp) continue
+                    val addresses = iface.inetAddresses
+                    while (addresses.hasMoreElements()) {
+                        val addr = addresses.nextElement()
+                        if (addr is java.net.Inet4Address) {
+                            _localIp.value = addr.hostAddress
+                            return@launch
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _localIp.value = "0.0.0.0"
+            }
         }
+    }
+
+    fun startWebBridge() {
+        // Generate fresh PIN
+        val pin = (1000..9999).random().toString()
+        RabitNetworkServer.currentPin = pin
+        
+        refreshLocalIp()
+        
+        val intent = Intent(getApplication<Application>(), HidService::class.java).apply {
+            action = HidService.ACTION_START_WEB_BRIDGE
+        }
+        getApplication<Application>().startService(intent)
+        _webBridgeEnabled.value = true
+        // Polling status for UI feedback
+        viewModelScope.launch {
+            delay(500)
+            _webBridgeRunning.value = RabitNetworkServer.isRunning
+            _webBridgePin.value = pin
+        }
+    }
+
+    fun stopWebBridge() {
+        val intent = Intent(getApplication<Application>(), HidService::class.java).apply {
+            action = HidService.ACTION_STOP_WEB_BRIDGE
+        }
+        getApplication<Application>().startService(intent)
+        _webBridgeEnabled.value = false
+        _webBridgeRunning.value = false
+        clearSharedFiles() // Clear on stop for security
+        stopP2PHosting() // Also stop P2P when bridge stops
+    }
+
+    fun startP2PHosting() {
+        webRtcManager.start()
+        _p2pEnabled.value = true
+        prefs.edit().putBoolean("p2p_enabled", true).apply()
+    }
+
+    fun stopP2PHosting() {
+        webRtcManager.stop()
+        _p2pEnabled.value = false
+        prefs.edit().putBoolean("p2p_enabled", false).apply()
     }
 
     fun startScanning() = repository.startScanning()
     fun stopScanning() = repository.stopScanning()
     fun requestDiscoverable() = repository.requestDiscoverable()
     fun connect(device: BluetoothDevice) = repository.connect(device)
+    fun connectWithRetry(device: BluetoothDevice) = repository.connectWithRetry(device)
     fun disconnect() = repository.disconnect()
     
     fun sendKey(keyCode: Byte) {
         repository.sendKey(keyCode, _activeModifiers.value)
+    }
+
+    fun sendKey(keyCode: Byte, modifier: Byte) {
+        repository.sendKey(keyCode, modifier)
     }
 
     fun toggleModifier(modifier: Byte) {
@@ -162,6 +313,91 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendConsumerKey(usageId: Short) = repository.sendConsumerKey(usageId)
     fun sendText(text: String) = repository.sendText(text)
+
+    // ── Macro Genie ──
+    private val _genieState = MutableStateFlow<GenieState>(GenieState.Idle)
+    val genieState = _genieState.asStateFlow()
+
+    sealed class GenieState {
+        object Idle : GenieState()
+        object Thinking : GenieState()
+        data class Success(val macroName: String) : GenieState()
+        data class Error(val message: String) : GenieState()
+    }
+
+    fun generateSmartMacro(intent: String) {
+        if (intent.isBlank()) return
+        viewModelScope.launch {
+            _genieState.value = GenieState.Thinking
+            try {
+                val ggufPath = prefs.getString("gguf_path", null)
+                if (ggufPath == null) {
+                    _genieState.value = GenieState.Error("Offline model not configured in Settings.")
+                    return@launch
+                }
+
+                val initialized = localLlmManager.initialize(ggufPath)
+                if (!initialized) {
+                    _genieState.value = GenieState.Error("Failed to initialize AI.")
+                    return@launch
+                }
+
+                val prompt = """
+                    You are Rabit Pro HID Assistant. Convert the user's intent into a comma-separated list of Mac HID keys.
+                    Keys available: GUI, SHIFT, ALT, CTRL, SPACE, ENTER, ESC, TAB, BACKSPACE, A-Z, 0-9, F1-F12.
+                    Example 1: "Mute Zoom" -> GUI, SHIFT, A
+                    Example 2: "New Window" -> GUI, N
+                    Example 3: "Lock Screen" -> GUI, CTRL, Q
+                    User Intent: "$intent"
+                    Output ONLY the comma-separated sequence.
+                """.trimIndent()
+
+                val response = localLlmManager.generateResponse(prompt).trim()
+                if (response.isNotEmpty()) {
+                    executeMacroSequence(response)
+                    _genieState.value = GenieState.Success(intent)
+                    delay(3000)
+                    _genieState.value = GenieState.Idle
+                } else {
+                    _genieState.value = GenieState.Error("AI returned empty sequence.")
+                }
+            } catch (e: Exception) {
+                _genieState.value = GenieState.Error(e.message ?: "Genie failed")
+            }
+        }
+    }
+
+    private fun executeMacroSequence(sequence: String) {
+        // Logic to parse "GUI, SHIFT, A" and send HID commands
+        val keys = sequence.split(",").map { it.trim().uppercase() }
+        var modifiers = 0.toByte()
+        var mainKey = HidKeyCodes.KEY_NONE
+
+        keys.forEach { key ->
+            when (key) {
+                "GUI" -> modifiers = modifiers or HidKeyCodes.MODIFIER_LEFT_GUI
+                "SHIFT" -> modifiers = modifiers or HidKeyCodes.MODIFIER_LEFT_SHIFT
+                "ALT" -> modifiers = modifiers or HidKeyCodes.MODIFIER_LEFT_ALT
+                "CTRL" -> modifiers = modifiers or HidKeyCodes.MODIFIER_LEFT_CTRL
+                "SPACE" -> mainKey = HidKeyCodes.KEY_SPACE
+                "ENTER" -> mainKey = HidKeyCodes.KEY_ENTER
+                "ESC" -> mainKey = HidKeyCodes.KEY_ESC
+                "TAB" -> mainKey = HidKeyCodes.KEY_TAB
+                "BACKSPACE" -> mainKey = HidKeyCodes.KEY_BACKSPACE
+                else -> {
+                    if (key.length == 1 && key[0] in 'A'..'Z') {
+                        mainKey = (HidKeyCodes.KEY_A + (key[0] - 'A')).toByte()
+                    } else if (key.length == 1 && key[0] in '0'..'9') {
+                        mainKey = if (key[0] == '0') HidKeyCodes.KEY_0 else (HidKeyCodes.KEY_1 + (key[0] - '1')).toByte()
+                    }
+                }
+            }
+        }
+        
+        if (mainKey != HidKeyCodes.KEY_NONE || modifiers != 0.toByte()) {
+            repository.sendKey(mainKey, modifiers)
+        }
+    }
     
     fun sendMouseMove(dx: Float, dy: Float, buttons: Int = 0, wheel: Int = 0) {
         if (buttons != 0 || wheel != 0) {
@@ -169,13 +405,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         
-        // Remove recursive dx filtering to avoid momentum drift
         val sensitivity = _trackpadSensitivity.value
-        val accelFactor = 1.15f
         
-        // Precise low-speed translation, accelerated high-speed translation
-        val finalDx = sign(dx) * abs(dx).pow(accelFactor) * sensitivity
-        val finalDy = sign(dy) * abs(dy).pow(accelFactor) * sensitivity
+        // Remove EMA filter — trackpad expects zero-latency instant response. 
+        // Use raw dx/dy with dual-zone acceleration:
+        // Zone 1 (Precision): |delta| < 3px — Linear 1:1 for pixel-perfect placement
+        // Zone 2 (Speed):     |delta| >= 3px — Quadratic acceleration for fast traversal
+        val precisionThreshold = 3f
+        
+        val finalDx = if (abs(dx) < precisionThreshold) {
+            dx * sensitivity
+        } else {
+            val excess = abs(dx) - precisionThreshold
+            val accelerated = precisionThreshold + excess * (1f + excess * 0.08f)
+            sign(dx) * accelerated * sensitivity
+        }
+
+        val finalDy = if (abs(dy) < precisionThreshold) {
+            dy * sensitivity
+        } else {
+            val excess = abs(dy) - precisionThreshold
+            val accelerated = precisionThreshold + excess * (1f + excess * 0.08f)
+            sign(dy) * accelerated * sensitivity
+        }
         
         repository.sendMouseMove(finalDx, finalDy, buttons, wheel)
     }
@@ -377,6 +629,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _trackpadSensitivity.value = sensitivity
     }
 
+    fun setAirMouseEnabled(enabled: Boolean) {
+        _airMouseEnabled.value = enabled
+    }
+
+    fun setAirMouseSensitivity(sensitivity: Float) {
+        prefs.edit().putFloat("air_mouse_sensitivity", sensitivity).apply()
+        _airMouseSensitivity.value = sensitivity
+    }
+
     private fun updateRepositorySpeed(speed: String) {
         val delay = when(speed) {
             "Too Slow" -> 250L
@@ -387,6 +648,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             else -> 120L
         }
         HidDeviceManager.getInstance(getApplication()).typingDelay = delay
+    }
+
+    // Air Mouse Calibration State
+    private val _isAirMouseCalibrating = MutableStateFlow(false)
+    val isAirMouseCalibrating = _isAirMouseCalibrating.asStateFlow()
+
+    fun setAirMouseCalibrating(calibrating: Boolean) {
+        _isAirMouseCalibrating.value = calibrating
+    }
+
+    // ── Macro Profiles ──
+    enum class MacroProfile(val label: String, val icon: ImageVector) {
+        GENERAL("General", Icons.Default.Apps),
+        BROWSER("Web", Icons.Default.Language),
+        DEV("Dev", Icons.Default.Code),
+        EDIT("Edit", Icons.Default.Edit)
+    }
+
+    private val _activeProfile = MutableStateFlow(MacroProfile.GENERAL)
+    val activeProfile = _activeProfile.asStateFlow()
+
+    fun setMacroProfile(profile: MacroProfile) {
+        _activeProfile.value = profile
     }
 
     override fun onCleared() {

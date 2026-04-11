@@ -1,10 +1,17 @@
 package com.example.rabit.ui.keyboard
 
 import android.net.Uri
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import com.example.rabit.ui.components.DarkSkeuoCard
@@ -26,6 +33,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.TextSnippet
+import androidx.compose.material.icons.automirrored.filled.VolumeDown
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -46,7 +57,14 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
+import android.content.ClipboardManager
+import android.content.Context
 import com.example.rabit.data.bluetooth.HidDeviceManager
+import com.example.rabit.data.network.RabitNetworkServer
+import com.example.rabit.ui.components.QrCodeGenerator
+import com.example.rabit.data.sensor.GyroscopeAirMouse
 import com.example.rabit.domain.model.HidKeyCodes
 import com.example.rabit.ui.CustomMacro
 import com.example.rabit.ui.MainViewModel
@@ -54,18 +72,22 @@ import com.example.rabit.ui.theme.*
 import com.example.rabit.ui.assistant.SpeechToTextButton
 import com.example.rabit.ui.components.PremiumGlassCard
 import com.example.rabit.ui.components.PushControlBar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
 @Composable
 fun KeyboardScreen(
-    viewModel: MainViewModel, 
+    viewModel: MainViewModel,
     onDisconnect: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToAssistant: () -> Unit,
     onNavigateToSnippets: () -> Unit = {},
-    onNavigateToShortcuts: () -> Unit = {}
+    onNavigateToShortcuts: () -> Unit = {},
+    onNavigateToWebBridge: () -> Unit = {}
 ) {
     val connectionState by viewModel.connectionState.collectAsState()
     val isPushPaused by viewModel.isPushPaused.collectAsState()
@@ -78,51 +100,22 @@ fun KeyboardScreen(
         }
     }
 
-    Scaffold(
-        bottomBar = {
-            Column {
-                // Push Control Bar — appears when text is being typed
-                AnimatedVisibility(
-                    visible = isPushPaused || viewModel.isTextPushing.collectAsState().value,
-                    enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
-                ) {
-                    PushControlBar(
-                        isPaused = isPushPaused,
-                        onPause = { viewModel.pauseTextPush() },
-                        onResume = { viewModel.resumeTextPush() },
-                        onStop = { viewModel.stopTextPush() }
-                    )
-                }
-                PremiumBottomBar(pagerState.currentPage, onNavigateToAssistant) { index ->
-                    scope.launch { pagerState.animateScrollToPage(index) }
-                }
-            }
-        },
-        containerColor = Obsidian
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-        ) {
-            PremiumHeader(connectionState, onNavigateToSettings, viewModel::disconnect)
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.weight(1f),
-                userScrollEnabled = true,
-                contentPadding = PaddingValues(bottom = 8.dp)
-            ) { page ->
-                when (page) {
-                    0 -> DualKeyboardTab(viewModel)
-                    1 -> TrackpadTab(viewModel)
-                    2 -> MacroDashboardTab(viewModel)
-                    3 -> AdvancedTab(viewModel, onNavigateToSettings, onNavigateToSnippets, onNavigateToShortcuts)
-                }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.weight(1f),
+            userScrollEnabled = true,
+            contentPadding = PaddingValues(bottom = 8.dp)
+        ) { page ->
+            when (page) {
+                0 -> DualKeyboardTab(viewModel)
+                1 -> TrackpadTab(viewModel)
+                2 -> MacroDashboardTab(viewModel)
+                3 -> AdvancedTab(viewModel, onNavigateToSettings, onNavigateToSnippets, onNavigateToShortcuts, onNavigateToWebBridge)
             }
         }
     }
@@ -135,60 +128,258 @@ fun KeyboardScreen(
 @Composable
 fun TrackpadTab(viewModel: MainViewModel) {
     val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
+    val airMouseEnabled by viewModel.airMouseEnabled.collectAsState()
+    val isCalibrating by viewModel.isAirMouseCalibrating.collectAsState()
+
+    // Air Mouse sensor lifecycle
+    val airMouse = remember { 
+        GyroscopeAirMouse(context).apply {
+            onCalibrationStatusChanged = { viewModel.setAirMouseCalibrating(it) }
+            onShakeDetected = {
+                // Command + Control + Q locks the Mac
+                val cmd = com.example.rabit.domain.model.HidKeyCodes.MODIFIER_LEFT_GUI.toInt()
+                val ctrl = com.example.rabit.domain.model.HidKeyCodes.MODIFIER_LEFT_CTRL.toInt()
+                viewModel.sendKey(
+                    com.example.rabit.domain.model.HidKeyCodes.KEY_Q,
+                    (cmd or ctrl).toByte()
+                )
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            }
+        }
+    }
+    DisposableEffect(airMouseEnabled) {
+        if (airMouseEnabled) {
+            airMouse.sensitivity = viewModel.airMouseSensitivity.value
+            airMouse.start()
+        } else {
+            airMouse.stop()
+        }
+        onDispose { airMouse.stop() }
+    }
+
+    // Collect Air Mouse deltas and forward to HID
+    LaunchedEffect(airMouseEnabled) {
+        if (airMouseEnabled) {
+            airMouse.deltaFlow.collect { (dx, dy) ->
+                viewModel.sendMouseMove(dx, dy)
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Text("TRACKPAD", color = Silver, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-        Spacer(modifier = Modifier.height(12.dp))
+        // Header row with mode toggle
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("TRACKPAD", color = Silver, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+
+            // Air Mouse toggle pill
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (airMouseEnabled) {
+                    // Precision Calibration Button
+                    TextButton(
+                        onClick = {
+                            airMouse.calibratePrecision()
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        },
+                        enabled = !isCalibrating,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        if (isCalibrating) {
+                            CircularProgressIndicator(modifier = Modifier.size(12.dp), color = AccentGold, strokeWidth = 1.5.dp)
+                        } else {
+                            Icon(Icons.Default.PrecisionManufacturing, contentDescription = null, tint = AccentGold, modifier = Modifier.size(14.dp))
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (isCalibrating) "Sampling..." else "Precision Calibrate", color = AccentGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Reset/Center button
+                    IconButton(
+                        onClick = {
+                            airMouse.calibrate()
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Default.CenterFocusStrong, contentDescription = "Center", tint = Silver.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
+                    }
+                }
+                Surface(
+                    modifier = Modifier
+                        .clickable {
+                            viewModel.setAirMouseEnabled(!airMouseEnabled)
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        },
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (airMouseEnabled) Platinum.copy(alpha = 0.1f) else SoftGrey.copy(alpha = 0.5f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        0.5.dp,
+                        if (airMouseEnabled) Platinum.copy(alpha = 0.3f) else BorderColor.copy(alpha = 0.3f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Sensors,
+                            contentDescription = "Air Mouse",
+                            tint = if (airMouseEnabled) Platinum else Silver,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Air Mouse",
+                            color = if (airMouseEnabled) Platinum else Silver,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Air Mouse active banner
+        if (airMouseEnabled) {
+            val infiniteTransition = rememberInfiniteTransition(label = "airMousePulse")
+            val pulseAlpha by infiniteTransition.animateFloat(
+                initialValue = 0.4f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 1200),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "airPulse"
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = Platinum.copy(alpha = 0.04f),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, Platinum.copy(alpha = 0.1f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(Platinum.copy(alpha = pulseAlpha), CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Air Mouse active — move your phone to control cursor", color = Platinum.copy(alpha = 0.8f), fontSize = 12.sp)
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
 
         Row(modifier = Modifier.weight(1f)) {
-            // Main trackpad surface (Apple Magic Trackpad style)
+            // Main trackpad surface with multi-touch gesture detection
             Surface(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
                     .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { viewModel.resetMouse() },
-                            onDragEnd = { viewModel.resetMouse() },
-                            onDragCancel = { viewModel.resetMouse() },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                viewModel.sendMouseMove(dx = dragAmount.x, dy = dragAmount.y)
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val pointers = event.changes.filter { it.pressed }
+                                
+                                when (pointers.size) {
+                                    1 -> {
+                                        // Single finger — cursor move
+                                        val change = pointers[0]
+                                        if (change.previousPressed) {
+                                            val dx = change.position.x - change.previousPosition.x
+                                            val dy = change.position.y - change.previousPosition.y
+                                            if (dx != 0f || dy != 0f) {
+                                                viewModel.sendMouseMove(dx = dx, dy = dy)
+                                            }
+                                        }
+                                        change.consume()
+                                    }
+                                    2 -> {
+                                        // Two fingers — scroll
+                                        val change1 = pointers[0]
+                                        val change2 = pointers[1]
+                                        if (change1.previousPressed && change2.previousPressed) {
+                                            val avgDy = ((change1.position.y - change1.previousPosition.y) +
+                                                    (change2.position.y - change2.previousPosition.y)) / 2f
+                                            if (kotlin.math.abs(avgDy) > 1.5f) {
+                                                viewModel.sendMouseMove(0f, 0f, wheel = if (avgDy > 0) -1 else 1)
+                                            }
+                                        }
+                                        pointers.forEach { it.consume() }
+                                    }
+                                }
+                                
+                                // Detect taps on release
+                                val released = event.changes.filter { !it.pressed && it.previousPressed }
+                                if (released.size == 1) {
+                                    val change = released[0]
+                                    val holdTime = change.uptimeMillis - change.previousUptimeMillis
+                                    val movedDistance = kotlin.math.sqrt(
+                                        ((change.position.x - change.previousPosition.x).let { it * it } +
+                                         (change.position.y - change.previousPosition.y).let { it * it }).toDouble()
+                                    ).toFloat()
+                                    // Single tap — left click (short hold, minimal movement)
+                                    if (holdTime < 250 && movedDistance < 15f) {
+                                        viewModel.sendMouseMove(0f, 0f, buttons = 1)
+                                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                            viewModel.sendMouseMove(0f, 0f, buttons = 0)
+                                        }, 50)
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    }
+                                } else if (released.size >= 2) {
+                                    // Two-finger tap — right click
+                                    viewModel.sendMouseMove(0f, 0f, buttons = 2)
+                                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                        viewModel.sendMouseMove(0f, 0f, buttons = 0)
+                                    }, 50)
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
                             }
-                        )
-                    }
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        viewModel.sendMouseMove(0f, 0f, buttons = 1)
-                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                            viewModel.sendMouseMove(0f, 0f, buttons = 0)
-                        }, 50)
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        }
                     },
                 shape = RoundedCornerShape(32.dp),
-                color = SoftGrey.copy(alpha = 0.5f), // Frosted glass look
-                border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.2f))
+                color = if (airMouseEnabled) Platinum.copy(alpha = 0.03f) else SoftGrey.copy(alpha = 0.5f),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, if (airMouseEnabled) Platinum.copy(alpha = 0.1f) else BorderColor.copy(alpha = 0.2f))
             ) {
                 Column(
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Icon(
-                        Icons.Default.TouchApp,
+                        if (airMouseEnabled) Icons.Default.Sensors else Icons.Default.TouchApp,
                         contentDescription = "Touchpad gesture",
-                        tint = Platinum.copy(alpha = 0.3f),
+                        tint = if (airMouseEnabled) Platinum.copy(alpha = 0.2f) else Platinum.copy(alpha = 0.3f),
                         modifier = Modifier.size(48.dp)
                     )
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Trackpad", color = Platinum.copy(alpha = 0.4f), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        if (airMouseEnabled) "Air Mouse + Touch" else "Trackpad",
+                        color = Platinum.copy(alpha = 0.4f),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "2-finger scroll · 2-finger tap = right click",
+                        color = Silver.copy(alpha = 0.25f),
+                        fontSize = 10.sp
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.width(10.dp))
 
-            // Scroll rail
+            // Scroll rail (kept as backup)
             Surface(
                 modifier = Modifier
                     .width(48.dp)
@@ -302,7 +493,7 @@ fun MacroDashboardTab(viewModel: MainViewModel) {
             item(span = { GridItemSpan(2) }) {
                 Text("QUICK ACTIONS", color = Silver.copy(alpha = 0.5f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.5.sp)
             }
-            
+
             items(builtInMacros) { macro ->
                 MacroCard(
                     macro = macro,
@@ -458,7 +649,7 @@ fun MacroCard(
                     modifier = Modifier.size(18.dp)
                 )
             }
-            
+
             // Delete Button
             if (showDelete) {
                 IconButton(
@@ -482,10 +673,10 @@ fun MacroCard(
                 modifier = Modifier.align(Alignment.BottomStart)
             ) {
                 Text(
-                    macro.name, 
-                    color = Platinum, 
-                    fontSize = 13.sp, 
-                    fontWeight = FontWeight.SemiBold, 
+                    macro.name,
+                    color = Platinum,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1
                 )
             }
@@ -498,14 +689,19 @@ fun MacroCard(
 // ────────────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun AdvancedTab(viewModel: MainViewModel, onNavigateToSettings: () -> Unit, onNavigateToSnippets: () -> Unit = {}, onNavigateToShortcuts: () -> Unit = {}) {
+fun AdvancedTab(
+    viewModel: MainViewModel, 
+    onNavigateToSettings: () -> Unit, 
+    onNavigateToSnippets: () -> Unit = {}, 
+    onNavigateToShortcuts: () -> Unit = {},
+    onNavigateToWebBridge: () -> Unit = {}
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val isRunning by viewModel.isWebBridgeRunning.collectAsState()
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var fileName by remember { mutableStateOf("") }
-    val currentMedia by viewModel.currentMedia.collectAsState()
-    val prefs = remember { context.getSharedPreferences("rabit_prefs", android.content.Context.MODE_PRIVATE) }
-    
+
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         selectedFileUri = uri
         uri?.let {
@@ -523,80 +719,34 @@ fun AdvancedTab(viewModel: MainViewModel, onNavigateToSettings: () -> Unit, onNa
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("MEDIA & FILE CONTROLS", color = Silver, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-        
-        // Media Artwork Sync Card
-        if (currentMedia != null) {
-            currentMedia?.let { media ->
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = SoftGrey.copy(alpha = 0.5f),
-                    shape = RoundedCornerShape(24.dp),
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.3f))
-                ) {
-                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            modifier = Modifier.size(72.dp),
-                            color = SoftGrey,
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            if (media.artUrl.isNotBlank()) {
-                                AsyncImage(model = media.artUrl, contentDescription = "Album Art", contentScale = ContentScale.Crop)
-                            } else {
-                                Icon(Icons.Default.MusicNote, contentDescription = null, tint = Silver, modifier = Modifier.padding(18.dp))
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column {
-                            Text(media.title, color = Platinum, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            Text(media.artist, color = Silver, fontSize = 13.sp, maxLines = 1)
-                            if (media.album.isNotBlank()) {
-                                Text(media.album, color = Silver.copy(alpha = 0.5f), fontSize = 11.sp, maxLines = 1)
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = Graphite.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(20.dp),
-                border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.3f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.MusicOff, contentDescription = null, tint = Silver.copy(alpha = 0.2f), modifier = Modifier.size(28.dp))
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column {
-                        Text("No media playing", color = Silver.copy(alpha = 0.4f), fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                        Text("Play music on your Mac to see controls", color = Silver.copy(alpha = 0.25f), fontSize = 12.sp)
-                    }
-                }
-            }
-        }
+        Text("FILE HUB STATUS", color = Silver, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
 
-        // Media Controls
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = SoftGrey.copy(alpha = 0.5f),
             shape = RoundedCornerShape(24.dp),
-            border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.3f))
+            border = androidx.compose.foundation.BorderStroke(0.5.dp, if (isRunning) SuccessGreen.copy(alpha = 0.3f) else BorderColor.copy(alpha = 0.3f))
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                Text("MEDIA", color = Silver, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                Spacer(modifier = Modifier.height(14.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    MediaIcon(Icons.Default.SkipPrevious) { viewModel.sendConsumerKey(HidKeyCodes.MEDIA_PREVIOUS) }
-                    MediaIcon(Icons.Default.VolumeDown) { viewModel.sendConsumerKey(HidKeyCodes.MEDIA_VOL_DOWN) }
-                    MediaIcon(Icons.Default.PlayArrow) { viewModel.sendConsumerKey(HidKeyCodes.MEDIA_PLAY_PAUSE) }
-                    MediaIcon(Icons.Default.VolumeUp) { viewModel.sendConsumerKey(HidKeyCodes.MEDIA_VOL_UP) }
-                    MediaIcon(Icons.Default.SkipNext) { viewModel.sendConsumerKey(HidKeyCodes.MEDIA_NEXT) }
+            Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (isRunning) Icons.Default.CloudSync else Icons.Default.CloudOff, 
+                    contentDescription = null, 
+                    tint = if (isRunning) SuccessGreen else Silver.copy(alpha = 0.5f), 
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        if (isRunning) "File Bridge Active" else "File Bridge Inactive", 
+                        color = Platinum, 
+                        fontSize = 16.sp, 
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        if (isRunning) "Connected to Mac File Hub" else "Server stopped or unreachable", 
+                        color = Silver, 
+                        fontSize = 13.sp
+                    )
                 }
             }
         }
@@ -611,7 +761,7 @@ fun AdvancedTab(viewModel: MainViewModel, onNavigateToSettings: () -> Unit, onNa
             Column(modifier = Modifier.padding(18.dp)) {
                 Text("REMOTE FILE TYPER", color = Silver, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                 Spacer(modifier = Modifier.height(12.dp))
-                
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
                         onClick = { filePicker.launch("*/*") },
@@ -657,39 +807,129 @@ fun AdvancedTab(viewModel: MainViewModel, onNavigateToSettings: () -> Unit, onNa
 
         // Quick Links Row
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SmallActionCard(modifier = Modifier.weight(1f), title = "SNIPPETS", icon = Icons.Default.TextSnippet, accent = AccentGold) { onNavigateToSnippets() }
+            SmallActionCard(modifier = Modifier.weight(1f), title = "SNIPPETS", icon = Icons.AutoMirrored.Filled.TextSnippet, accent = AccentGold) { onNavigateToSnippets() }
             SmallActionCard(modifier = Modifier.weight(1f), title = "SHORTCUTS", icon = Icons.Default.Keyboard, accent = AccentPurple) { onNavigateToShortcuts() }
         }
 
-        // Handoff Quick Action
+        // ── Zero-Install Web Bridge (Refactored to Standalone Screen) ──
+        val isRunning by viewModel.isWebBridgeRunning.collectAsState(initial = RabitNetworkServer.isRunning)
+        
+        Surface(
+            modifier = Modifier.fillMaxWidth().clickable { onNavigateToWebBridge() },
+            color = SoftGrey.copy(alpha = 0.5f),
+            shape = RoundedCornerShape(26.dp),
+            border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.3f))
+        ) {
+            Row(
+                modifier = Modifier.padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier.size(40.dp).background(if (isRunning) SuccessGreen.copy(alpha = 0.1f) else Silver.copy(alpha = 0.1f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            if (isRunning) Icons.Default.CloudDone else Icons.Default.Cloud,
+                            contentDescription = null,
+                            tint = if (isRunning) SuccessGreen else Silver,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text("WEB BRIDGE", color = Silver, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                        Text(
+                            if (isRunning) "Server Active · Tap to manage" else "Server Offline · Tap to start",
+                            color = if (isRunning) SuccessGreen else Silver.copy(alpha=0.5f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+                Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = Silver.copy(alpha = 0.3f))
+            }
+        }
+
+        // Handoff Quick Action (NSD auto-discovery)
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable {
-                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     val clip = clipboard.primaryClip
                     if (clip != null && clip.itemCount > 0) {
                         val text = clip.getItemAt(0).text?.toString()
                         if (!text.isNullOrBlank() && text.startsWith("http")) {
-                            val macIp = prefs.getString("mac_ip", "") ?: ""
-                            if (macIp.isNotBlank()) {
-                                scope.launch {
-                                    try {
-                                        val url = java.net.URL("http://$macIp:8766/handoff")
-                                        val conn = url.openConnection() as java.net.HttpURLConnection
-                                        conn.requestMethod = "POST"
-                                        conn.setRequestProperty("Content-Type", "application/json")
-                                        conn.doOutput = true
-                                        conn.outputStream.write("{\"url\":\"$text\"}".toByteArray())
-                                        conn.responseCode
-                                        conn.disconnect()
-                                        android.widget.Toast.makeText(context, "Sent to Mac!", android.widget.Toast.LENGTH_SHORT).show()
-                                    } catch (e: Exception) {
-                                        android.widget.Toast.makeText(context, "Failed: Set Mac IP in Settings", android.widget.Toast.LENGTH_SHORT).show()
+                            // Use NSD to discover Mac on the local network
+                            scope.launch {
+                                android.widget.Toast.makeText(context, "Searching for Mac…", android.widget.Toast.LENGTH_SHORT).show()
+                                val nsdManager = context.getSystemService(android.content.Context.NSD_SERVICE) as NsdManager
+                                var resolved = false
+                                val resolveListener = object : NsdManager.ResolveListener {
+                                    override fun onResolveFailed(info: NsdServiceInfo, code: Int) {
+                                        if (!resolved) {
+                                            resolved = true
+                                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                                android.widget.Toast.makeText(context, "Could not reach Mac", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                    override fun onServiceResolved(info: NsdServiceInfo) {
+                                        resolved = true
+                                        val host = info.host.hostAddress
+                                        val port = info.port
+                                        scope.launch {
+                                            try {
+                                                withContext(Dispatchers.IO) {
+                                                    val url = java.net.URL("http://$host:$port/handoff")
+                                                    val conn = url.openConnection() as java.net.HttpURLConnection
+                                                    conn.requestMethod = "POST"
+                                                    conn.setRequestProperty("Content-Type", "application/json")
+                                                    conn.doOutput = true
+                                                    conn.connectTimeout = 3000
+                                                    conn.outputStream.write("{\"url\":\"$text\"}".toByteArray())
+                                                    conn.responseCode
+                                                    conn.disconnect()
+                                                }
+                                                android.widget.Toast.makeText(context, "✅ Sent to Mac!", android.widget.Toast.LENGTH_SHORT).show()
+                                            } catch (e: Exception) {
+                                                android.widget.Toast.makeText(context, "Failed to reach Mac", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
                                     }
                                 }
-                            } else {
-                                android.widget.Toast.makeText(context, "Set Mac IP in Settings first", android.widget.Toast.LENGTH_SHORT).show()
+                                val discoveryListener = object : NsdManager.DiscoveryListener {
+                                    override fun onDiscoveryStarted(type: String) {}
+                                    override fun onServiceFound(info: NsdServiceInfo) {
+                                        if (info.serviceName.contains("rabit", ignoreCase = true)) {
+                                            try { nsdManager.resolveService(info, resolveListener) } catch (_: Exception) {}
+                                        }
+                                    }
+                                    override fun onServiceLost(info: NsdServiceInfo) {}
+                                    override fun onDiscoveryStopped(type: String) {}
+                                    override fun onStartDiscoveryFailed(type: String, code: Int) {
+                                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                            android.widget.Toast.makeText(context, "Discovery failed", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                    override fun onStopDiscoveryFailed(type: String, code: Int) {}
+                                }
+                                try {
+                                    nsdManager.discoverServices("_rabit._tcp.", NsdManager.PROTOCOL_DNS_SD, discoveryListener)
+                                    // Timeout after 4 seconds
+                                    delay(4000)
+                                    if (!resolved) {
+                                        resolved = true
+                                        try { nsdManager.stopServiceDiscovery(discoveryListener) } catch (_: Exception) {}
+                                        android.widget.Toast.makeText(context, "Mac not found. Ensure Rabit companion is running.", android.widget.Toast.LENGTH_LONG).show()
+                                    } else {
+                                        try { nsdManager.stopServiceDiscovery(discoveryListener) } catch (_: Exception) {}
+                                    }
+                                } catch (e: Exception) {
+                                    android.widget.Toast.makeText(context, "Network error", android.widget.Toast.LENGTH_SHORT).show()
+                                }
                             }
                         } else {
                             android.widget.Toast.makeText(context, "Copy a URL first", android.widget.Toast.LENGTH_SHORT).show()
@@ -708,12 +948,12 @@ fun AdvancedTab(viewModel: MainViewModel, onNavigateToSettings: () -> Unit, onNa
                     modifier = Modifier.size(40.dp).background(AccentTeal.copy(alpha=0.15f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.OpenInNew, contentDescription = null, tint = AccentTeal, modifier = Modifier.size(20.dp))
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, tint = AccentTeal, modifier = Modifier.size(20.dp))
                 }
                 Spacer(modifier = Modifier.width(14.dp))
                 Column {
                     Text("Handoff to Mac", color = Platinum.copy(alpha=0.9f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Opens clipboard URL on your Mac", color = Silver.copy(alpha=0.6f), fontSize = 12.sp)
+                    Text("Auto-discovers Mac on your network", color = Silver.copy(alpha=0.6f), fontSize = 12.sp)
                 }
             }
         }
@@ -723,7 +963,7 @@ fun AdvancedTab(viewModel: MainViewModel, onNavigateToSettings: () -> Unit, onNa
             SmallActionCard(modifier = Modifier.weight(1f), title = "UNLOCK", icon = Icons.Default.LockOpen, accent = AccentBlue) { viewModel.unlockMac() }
             SmallActionCard(modifier = Modifier.weight(1f), title = "SETTINGS", icon = Icons.Default.Settings, accent = SuccessGreen) { onNavigateToSettings() }
         }
-        
+
         SmallActionCard(modifier = Modifier.fillMaxWidth(), title = "DISCONNECT", icon = Icons.Default.BluetoothDisabled, accent = ErrorRed) { viewModel.disconnect() }
     }
 }
@@ -771,7 +1011,7 @@ fun SmallActionCard(
             ) {
                 Icon(icon, contentDescription = title, tint = accent, modifier = Modifier.size(18.dp))
             }
-            
+
             Column(modifier = Modifier.align(Alignment.BottomStart)) {
                 Text(title, color = Platinum.copy(alpha=0.9f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             }
@@ -790,18 +1030,16 @@ fun PremiumBottomBar(
     onTabSelected: (Int) -> Unit
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp)
-            .padding(bottom = 24.dp, top = 8.dp), // Floating spacing
-        color = Obsidian.copy(alpha = 0.85f),
-        shape = CircleShape,
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.5f))
+        modifier = Modifier.fillMaxWidth(),
+        color = Graphite,
+        tonalElevation = 0.dp,
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.3f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 10.dp),
+                .navigationBarsPadding()
+                .padding(horizontal = 4.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -816,56 +1054,82 @@ fun PremiumBottomBar(
                 val isSelected = selectedTab == index
                 Column(
                     modifier = Modifier
+                        .weight(1f)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { onTabSelected(index) }
-                        .background(if (isSelected) AccentBlue.copy(alpha = 0.15f) else Color.Transparent, RoundedCornerShape(12.dp))
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                        .padding(vertical = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(
-                        icon,
-                        contentDescription = label,
-                        tint = if (isSelected) AccentBlue else Silver.copy(alpha = 0.5f),
-                        modifier = Modifier.size(22.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(
+                                if (isSelected) AccentBlue.copy(alpha = 0.12f) else androidx.compose.ui.graphics.Color.Transparent,
+                                RoundedCornerShape(10.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            icon,
+                            contentDescription = label,
+                            tint = if (isSelected) AccentBlue else Silver.copy(alpha = 0.45f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         label,
-                        color = if (isSelected) AccentBlue else Silver.copy(alpha = 0.5f),
+                        color = if (isSelected) AccentBlue else Silver.copy(alpha = 0.45f),
                         fontSize = 9.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                     )
                 }
             }
 
-            // Small glowing separator
+            // Vertical divider
             Box(
                 modifier = Modifier
-                    .width(1.dp)
-                    .height(26.dp)
-                    .background(BorderColor.copy(alpha = 0.5f))
+                    .width(0.5.dp)
+                    .height(32.dp)
+                    .background(BorderColor.copy(alpha = 0.4f))
             )
 
-            // AI Assistant Button always has a special tint
+            // AI Assistant tab (special gold styling)
             Column(
                 modifier = Modifier
+                    .weight(1f)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { onNavigateToAssistant() }
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(
-                    Icons.Default.AutoAwesome,
-                    contentDescription = "AI Assistant",
-                    tint = AccentGold,
-                    modifier = Modifier.size(22.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(
+                            if (selectedTab == -1) AccentGold.copy(alpha = 0.12f) else androidx.compose.ui.graphics.Color.Transparent,
+                            RoundedCornerShape(10.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = "AI Assistant",
+                        tint = if (selectedTab == -1) AccentGold else AccentGold.copy(alpha = 0.6f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.height(2.dp))
-                Text("AI", color = AccentGold, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "AI",
+                    color = if (selectedTab == -1) AccentGold else AccentGold.copy(alpha = 0.6f),
+                    fontSize = 9.sp,
+                    fontWeight = if (selectedTab == -1) FontWeight.Bold else FontWeight.Normal
+                )
             }
         }
     }

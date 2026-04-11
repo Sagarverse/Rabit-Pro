@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <!-- Simplified monochrome version of the rabbit logo -->
+    <!-- This is a placeholder for the themed icon. 
+         Ideally we would have a proper vector of the rabbit head. 
+         For now, since we have a PNG, we will use a tinted version of the logo if possible,
+         but standard Android Monochrome icons should be vectors.
+    -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M512,512m-400,0a400,400 0,1 1,800 0a400,400 0,1 1,-800 0" />
+</vector>

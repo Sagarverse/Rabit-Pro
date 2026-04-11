@@ -78,6 +78,13 @@ class BluetoothScanner(private val context: Context) {
         }
     }
 
+    /**
+     * Clears previously scanned devices for a fresh scan.
+     */
+    fun clearDevices() {
+        _scannedDevices.value = emptySet()
+    }
+
     fun startScanning() {
         if (_isScanning.value) return
         
@@ -89,6 +96,13 @@ class BluetoothScanner(private val context: Context) {
             return
         }
 
+        // Immediately populate bonded devices for instant display
+        try {
+            _scannedDevices.value = adapter.bondedDevices ?: emptySet()
+        } catch (e: Exception) {
+            Log.w("BluetoothScanner", "Could not read bonded devices", e)
+        }
+
         // Start Classic Discovery
         val filter = IntentFilter(BluetoothDevice.ACTION_FOUND)
         context.registerReceiver(bluetoothReceiver, filter)
@@ -98,7 +112,6 @@ class BluetoothScanner(private val context: Context) {
         val leScanner = try { adapter.bluetoothLeScanner } catch (e: Exception) { null }
         if (leScanner != null) {
             try {
-                _scannedDevices.value = adapter.bondedDevices ?: emptySet()
                 val settings = ScanSettings.Builder()
                     .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                     .build()
@@ -109,7 +122,8 @@ class BluetoothScanner(private val context: Context) {
         }
 
         _isScanning.value = true
-        handler.postDelayed(scanStopRunnable, 15000)
+        // Reduced from 15s to 8s for faster turnaround
+        handler.postDelayed(scanStopRunnable, 8000)
     }
 
     fun stopScanning() {

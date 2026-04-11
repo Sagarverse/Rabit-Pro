@@ -1,11 +1,17 @@
 package com.example.rabit.ui.settings
 
 import android.widget.Toast
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -13,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -29,7 +36,11 @@ import com.example.rabit.ui.components.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
+fun SettingsScreen(
+    viewModel: MainViewModel,
+    onBack: () -> Unit,
+    onNavigateToProfile: () -> Unit
+) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val geminiSettingsViewModel: GeminiSettingsViewModel = viewModel(
@@ -49,7 +60,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     val trackpadSensitivity by viewModel.trackpadSensitivity.collectAsState()
     
     val prefs = remember { context.getSharedPreferences("rabit_prefs", android.content.Context.MODE_PRIVATE) }
-    var macIp by remember { mutableStateOf(prefs.getString("mac_ip", "") ?: "") }
+
 
     var dndOnConnect by remember { mutableStateOf(prefs.getBoolean("auto_dnd_on_connect", false)) }
     var wakeLockOnConnect by remember { mutableStateOf(prefs.getBoolean("auto_wake_lock_on_connect", false)) }
@@ -59,9 +70,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
 
     var showPasswordDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
-    var showMacIpDialog by remember { mutableStateOf(false) }
     var showQrDialog by remember { mutableStateOf(false) }
-    var showAboutDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -86,7 +95,45 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // ─── Pro Status Card ───
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = AccentGold.copy(alpha = 0.1f),
+                border = BorderStroke(1.dp, Brush.linearGradient(listOf(AccentGold.copy(alpha = 0.5f), Color.Transparent)))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier.size(40.dp).background(AccentGold.copy(alpha = 0.2f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.WorkspacePremium, contentDescription = null, tint = AccentGold, modifier = Modifier.size(24.dp))
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text("Rabit Pro", color = Platinum, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("Lifetime Professional License", color = AccentGold, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+
             GeminiApiSettingsSection(viewModel = geminiSettingsViewModel)
+            
+            // ─── Appearance ───
+            PremiumSectionHeader("APPEARANCE")
+            PremiumGlassCard {
+                SettingsToggleItem(
+                    title = "Colorful UI",
+                    subtitle = "Toggle premium dynamic coloring",
+                    icon = Icons.Default.Palette,
+                    iconColor = AccentBlue,
+                    checked = !com.example.rabit.ui.theme.AppThemeMode.isMonochrome,
+                    onCheckedChange = { com.example.rabit.ui.theme.AppThemeMode.isMonochrome = !it }
+                )
+            }
             
             // ─── Connection ───
             PremiumSectionHeader("CONNECTION")
@@ -178,25 +225,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 )
             }
 
-            // ─── Screen Handoff & Network ───
-            PremiumSectionHeader("SCREEN HANDOFF")
-            PremiumGlassCard {
-                SettingsClickItem(
-                    title = "Mac IP Address",
-                    subtitle = if (macIp.isBlank()) "Required for handoff • Tap to set" else "Current: $macIp",
-                    icon = Icons.Default.Computer,
-                    iconColor = AccentTeal,
-                    onClick = { showMacIpDialog = true }
-                )
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
-                SettingsClickItem(
-                    title = "File Receive Server",
-                    subtitle = "Running on port 8765 • Send files via curl",
-                    icon = Icons.Default.FolderOpen,
-                    iconColor = AccentGold,
-                    onClick = { }
-                )
-            }
+
 
             // ─── Macros ───
             PremiumSectionHeader("MACROS")
@@ -278,15 +307,23 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             PremiumSectionHeader("ABOUT")
             PremiumGlassCard {
                 SettingsClickItem(
-                    title = "About Rabit Pro",
-                    subtitle = "Version, credits & licenses",
+                    title = "About Developer",
+                    subtitle = "Sagar M • Bengaluru, India",
+                    icon = Icons.Default.Person,
+                    iconColor = Platinum,
+                    onClick = onNavigateToProfile
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsClickItem(
+                    title = "Version Info",
+                    subtitle = "v1.5.0-pro (Stable Build)",
                     icon = Icons.Default.Info,
                     iconColor = Silver,
-                    onClick = { showAboutDialog = true }
+                    onClick = { /* Could show a changelog */ }
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(40.dp))
         }
     }
 
@@ -337,28 +374,7 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
         )
     }
 
-    if (showMacIpDialog) {
-        var tempIp by remember { mutableStateOf(macIp) }
-        AlertDialog(
-            onDismissRequest = { showMacIpDialog = false },
-            containerColor = Graphite,
-            title = { Text("Mac IP Address", color = Platinum) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Enter your Mac's local IP address.\nFind it in System Settings → Network.", color = Silver, fontSize = 13.sp)
-                    OutlinedTextField(
-                        value = tempIp,
-                        onValueChange = { tempIp = it },
-                        label = { Text("e.g. 192.168.1.100") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentTeal, unfocusedBorderColor = BorderColor, focusedTextColor = Platinum)
-                    )
-                }
-            },
-            confirmButton = { Button(onClick = { macIp = tempIp; prefs.edit().putString("mac_ip", tempIp).apply(); showMacIpDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = AccentTeal)) { Text("Save", color = Obsidian) } },
-            dismissButton = { TextButton(onClick = { showMacIpDialog = false }) { Text("Cancel", color = Silver) } }
-        )
-    }
+
 
     if (showQrDialog) {
         val myPublicKey = remember { encryptionManager.getPublicKeyBase64() }
@@ -392,45 +408,6 @@ fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 }, colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) { Text("Pair") }
             },
             dismissButton = { TextButton(onClick = { showQrDialog = false }) { Text("Cancel", color = Silver) } }
-        )
-    }
-
-    if (showAboutDialog) {
-        AlertDialog(
-            onDismissRequest = { showAboutDialog = false },
-            containerColor = Graphite,
-            title = { Text("About Rabit Pro", color = Platinum) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Bluetooth, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(32.dp))
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("RABIT PRO", color = Platinum, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                            Text("v1.0.0", color = Silver, fontSize = 13.sp)
-                        }
-                    }
-                    HorizontalDivider(thickness = 0.5.dp, color = BorderColor)
-                    Text("AI-augmented Bluetooth HID suite that transforms your Android phone into a wireless keyboard, trackpad, and automation controller for Mac & Android.", color = Silver, fontSize = 14.sp, lineHeight = 20.sp)
-                    HorizontalDivider(thickness = 0.5.dp, color = BorderColor)
-                    Text("FEATURES", color = AccentGold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                    val features = listOf(
-                        "⌨️  HID Keyboard & Trackpad",
-                        "🤖  Gemini AI + Local LLM",
-                        "🔐  E2EE via AES-GCM 256-bit",
-                        "⚡  Custom Shell Macros",
-                        "📲  Screen Handoff to Mac",
-                        "📋  Clipboard Auto-Push",
-                        "🎵  Media Sync & Controls"
-                    )
-                    features.forEach { Text(it, color = Platinum, fontSize = 13.sp) }
-                    HorizontalDivider(thickness = 0.5.dp, color = BorderColor)
-                    Text("Made with ❤️ using Kotlin & Jetpack Compose", color = Silver.copy(alpha = 0.6f), fontSize = 12.sp)
-                }
-            },
-            confirmButton = {
-                Button(onClick = { showAboutDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) { Text("Close") }
-            }
         )
     }
 
@@ -521,5 +498,33 @@ fun SettingsClickItem(
             Text(subtitle, color = Silver, fontSize = 12.sp)
         }
         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Silver.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
+    }
+}
+
+@Composable
+fun ContactItem(icon: ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = Silver, modifier = Modifier.size(16.dp))
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(text, color = Platinum, fontSize = 14.sp)
+    }
+}
+
+@Composable
+fun SocialIconButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable { onClick() }.padding(8.dp)
+    ) {
+        Surface(
+            modifier = Modifier.size(44.dp),
+            shape = CircleShape,
+            color = SoftGrey.copy(alpha = 0.3f),
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderColor.copy(alpha = 0.2f))
+        ) {
+            Icon(icon, contentDescription = label, tint = Platinum, modifier = Modifier.padding(10.dp))
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(label, color = Silver, fontSize = 10.sp)
     }
 }

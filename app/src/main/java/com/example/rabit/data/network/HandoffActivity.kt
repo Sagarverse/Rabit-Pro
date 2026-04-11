@@ -1,8 +1,10 @@
 package com.example.rabit.data.network
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -14,6 +16,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.TimeUnit
 
 /**
  * HandoffActivity - Feature 3: Screen Handoff
@@ -23,7 +26,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * Android invokes this Activity with the URL as an Intent extra.
  *
  * The Activity then:
- *  1. Reads the Mac's IP from SharedPreferences (set by the Settings screen)
+ *  1. Discovers the Mac's companion server on the local network via NSD (mDNS)
  *  2. POSTs the URL to the Mac's companion server endpoint via OkHttp
  *  3. Finishes immediately (invisible to the user)
  */
@@ -33,7 +36,10 @@ class HandoffActivity : Activity() {
     data class HandoffPayload(val url: String)
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .build()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,19 +57,102 @@ class HandoffActivity : Activity() {
         }
 
         Log.d("HandoffActivity", "Handing off URL: $url")
+        discoverAndSend(url)
+    }
 
-        val prefs: SharedPreferences = getSharedPreferences("rabit_prefs", MODE_PRIVATE)
-        val macIp = prefs.getString("mac_ip", "") ?: ""
+    /**
+     * Use Android NSD (Network Service Discovery) to find the Mac's Rabit companion
+     * server on the local network, then POST the URL to it.
+     */
+    private fun discoverAndSend(url: String) {
+        val nsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
+        var resolved = false
 
-        if (macIp.isBlank()) {
-            Toast.makeText(this, "Rabit: Mac IP not set. Go to Settings.", Toast.LENGTH_LONG).show()
+        val resolveListener = object : NsdManager.ResolveListener {
+            override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                Log.e("HandoffActivity", "NSD resolve failed: $errorCode")
+                if (!resolved) {
+                    resolved = true
+                    runOnUiThread {
+                        Toast.makeText(this@HandoffActivity, "Rabit: Could not reach Mac server.", Toast.LENGTH_SHORT).show()
+                        finish()
+                    }
+                }
+            }
+
+            override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+                resolved = true
+                val host = serviceInfo.host.hostAddress
+                val port = serviceInfo.port
+                Log.d("HandoffActivity", "Resolved Mac at $host:$port")
+                sendToMac(url, host ?: "", port)
+            }
+        }
+
+        val discoveryListener = object : NsdManager.DiscoveryListener {
+            override fun onDiscoveryStarted(serviceType: String) {
+                Log.d("HandoffActivity", "NSD discovery started for $serviceType")
+            }
+
+            override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+                Log.d("HandoffActivity", "NSD service found: ${serviceInfo.serviceName}")
+                if (serviceInfo.serviceName.contains("rabit", ignoreCase = true)) {
+                    try {
+                        nsdManager.resolveService(serviceInfo, resolveListener)
+                    } catch (e: Exception) {
+                        Log.e("HandoffActivity", "Resolve error", e)
+                    }
+                }
+            }
+
+            override fun onServiceLost(serviceInfo: NsdServiceInfo) {}
+            override fun onDiscoveryStopped(serviceType: String) {}
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                Log.e("HandoffActivity", "NSD start failed: $errorCode")
+                runOnUiThread {
+                    Toast.makeText(this@HandoffActivity, "Rabit: Network discovery failed.", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+            }
+            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
+        }
+
+        // Start NSD discovery
+        try {
+            nsdManager.discoverServices("_rabit._tcp.", NsdManager.PROTOCOL_DNS_SD, discoveryListener)
+        } catch (e: Exception) {
+            Log.e("HandoffActivity", "Failed to start NSD", e)
+            Toast.makeText(this, "Rabit: Discovery error.", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
-        val macPort = prefs.getInt("mac_handoff_port", 8766)
-        val endpoint = "http://$macIp:$macPort/handoff"
+        // Timeout: if not resolved within 4 seconds, give up
+        scope.launch {
+            delay(4000)
+            if (!resolved) {
+                resolved = true
+                try { nsdManager.stopServiceDiscovery(discoveryListener) } catch (_: Exception) {}
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@HandoffActivity, "Rabit: Mac not found on network. Ensure Rabit Mac companion is running.", Toast.LENGTH_LONG).show()
+                    finish()
+                }
+            } else {
+                try { nsdManager.stopServiceDiscovery(discoveryListener) } catch (_: Exception) {}
+            }
+        }
+    }
 
+    private fun sendToMac(url: String, host: String, port: Int) {
+        if (host.isBlank()) {
+            runOnUiThread {
+                Toast.makeText(this, "Rabit: Invalid Mac address.", Toast.LENGTH_SHORT).show()
+                finish()
+            }
+            return
+        }
+
+        val endpoint = "http://$host:$port/handoff"
         scope.launch {
             try {
                 val json = Json.encodeToString(HandoffPayload(url))

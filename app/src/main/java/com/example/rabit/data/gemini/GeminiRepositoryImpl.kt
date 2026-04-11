@@ -19,38 +19,63 @@ class GeminiRepositoryImpl : GeminiRepository {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
-        
+
     private val verifyClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
         .build()
-        
+
     private val baseUrl = "https://generativelanguage.googleapis.com/v1beta/models"
     private val defaultModel = "gemini-pro-latest"
 
     override suspend fun sendPrompt(request: GeminiRequest, apiKey: String): GeminiResponse = withContext(Dispatchers.IO) {
         try {
             val modelName = if (request.model.isBlank()) defaultModel else request.model
-            val url = "$baseUrl/$modelName:generateContent?key=$apiKey"
-            
+            // Ensure a vision-capable model is used when images are attached
+            val effectiveModel = if ((request.imageBase64 != null || request.imageBase64List.isNotEmpty()) && !modelName.contains("flash") && !modelName.contains("pro") && !modelName.contains("vision")) {
+                "gemini-2.0-flash"
+            } else {
+                modelName
+            }
+            val url = "$baseUrl/$effectiveModel:generateContent?key=$apiKey"
+
             val json = JSONObject().apply {
                 val contents = JSONArray().apply {
                     val contentObj = JSONObject().apply {
                         val parts = JSONArray().apply {
                             put(JSONObject().apply { put("text", request.prompt) })
+                            // Include images if provided (Gemini Vision)
+                            if (request.imageBase64List.isNotEmpty()) {
+                                request.imageBase64List.forEach { b64 ->
+                                    put(JSONObject().apply {
+                                        put("inline_data", JSONObject().apply {
+                                            put("mime_type", request.imageMimeType ?: "image/jpeg")
+                                            put("data", b64)
+                                        })
+                                    })
+                                }
+                            } else if (request.imageBase64 != null) {
+                                put(JSONObject().apply {
+                                    put("inline_data", JSONObject().apply {
+                                        put("mime_type", request.imageMimeType ?: "image/jpeg")
+                                        put("data", request.imageBase64)
+                                    })
+                                })
+                            }
                         }
                         put("parts", parts)
+                        put("role", "user")
                     }
                     put(contentObj)
                 }
                 put("contents", contents)
-                
+
                 val generationConfig = JSONObject().apply {
                     put("temperature", request.temperature)
                     put("maxOutputTokens", request.maxTokens)
                 }
                 put("generationConfig", generationConfig)
-                
+
                 request.systemPrompt?.let {
                     val systemInstruction = JSONObject().apply {
                         val parts = JSONArray().apply {
@@ -68,10 +93,10 @@ class GeminiRepositoryImpl : GeminiRepository {
                 .post(body)
                 .header("Content-Type", "application/json")
                 .build()
-                
+
             val response = client.newCall(httpRequest).execute()
             val responseBody = response.body?.string()
-            
+
             if (response.isSuccessful && responseBody != null) {
                 val obj = JSONObject(responseBody)
                 val candidates = obj.optJSONArray("candidates")
@@ -98,14 +123,14 @@ class GeminiRepositoryImpl : GeminiRepository {
 
     override suspend fun verifyApiKey(apiKey: String): Boolean = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext false
-        
+
         val url = "$baseUrl?key=$apiKey"
         try {
             val httpRequest = Request.Builder()
                 .url(url)
                 .get()
                 .build()
-                
+
             val response = verifyClient.newCall(httpRequest).execute()
             val isOk = response.isSuccessful
             if (!isOk) {
@@ -120,17 +145,17 @@ class GeminiRepositoryImpl : GeminiRepository {
 
     override suspend fun getAvailableModels(apiKey: String): List<String> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext emptyList()
-        
+
         val url = "$baseUrl?key=$apiKey"
         try {
             val httpRequest = Request.Builder()
                 .url(url)
                 .get()
                 .build()
-                
+
             val response = verifyClient.newCall(httpRequest).execute()
             val responseBody = response.body?.string()
-            
+
             if (response.isSuccessful && responseBody != null) {
                 val obj = JSONObject(responseBody)
                 val modelsArray = obj.optJSONArray("models")

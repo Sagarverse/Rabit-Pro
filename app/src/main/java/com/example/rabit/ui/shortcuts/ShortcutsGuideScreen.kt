@@ -26,6 +26,7 @@ data class ShortcutItem(
     val name: String,
     val keys: String,
     val codes: List<Byte>,
+    val consumerCode: Short? = null,
     val color: Color = AccentBlue
 )
 
@@ -83,7 +84,13 @@ fun ShortcutsGuideScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     items(category.shortcuts, key = { it.name }) { shortcut ->
                         ShortcutRow(
                             shortcut = shortcut,
-                            onClick = { viewModel.sendKeyCombination(shortcut.codes) }
+                            onClick = {
+                                if (shortcut.consumerCode != null) {
+                                    viewModel.sendConsumerKey(shortcut.consumerCode)
+                                } else {
+                                    viewModel.sendKeyCombination(shortcut.codes)
+                                }
+                            }
                         )
                     }
                 }
@@ -215,9 +222,9 @@ private fun buildShortcutCategories(): List<ShortcutCategory> = listOf(
         ShortcutItem("Address Bar", "⌘ + L", listOf(HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.KEY_L)),
     )),
     ShortcutCategory("Media", Icons.Default.MusicNote, AccentOrange, listOf(
-        ShortcutItem("Play / Pause", "Media Key", listOf()),
-        ShortcutItem("Volume Up", "Media Key", listOf()),
-        ShortcutItem("Volume Down", "Media Key", listOf()),
-        ShortcutItem("Mute", "Media Key", listOf()),
+        ShortcutItem("Play / Pause", "Media Key", listOf(), consumerCode = HidKeyCodes.MEDIA_PLAY_PAUSE),
+        ShortcutItem("Volume Up", "Media Key", listOf(), consumerCode = HidKeyCodes.MEDIA_VOL_UP),
+        ShortcutItem("Volume Down", "Media Key", listOf(), consumerCode = HidKeyCodes.MEDIA_VOL_DOWN),
+        ShortcutItem("Mute", "Media Key", listOf(), consumerCode = HidKeyCodes.MEDIA_MUTE),
     ))
 )

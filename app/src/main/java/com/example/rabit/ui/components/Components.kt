@@ -26,6 +26,7 @@ import com.example.rabit.ui.theme.*
 @Composable
 fun PremiumGlassCard(
     modifier: Modifier = Modifier,
+    backgroundColor: Color = Graphite.copy(alpha = 0.6f),
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -35,7 +36,7 @@ fun PremiumGlassCard(
             .clip(RoundedCornerShape(16.dp))
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
             .border(0.5.dp, BorderColor.copy(alpha = 0.5f), RoundedCornerShape(16.dp)),
-        color = Graphite.copy(alpha = 0.6f)
+        color = backgroundColor
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -195,16 +196,20 @@ fun SettingsIconBadge(
     modifier: Modifier = Modifier,
     iconTint: Color = Color.White
 ) {
+    val isMonochrome = com.example.rabit.ui.theme.AppThemeMode.isMonochrome
+    val bg = if (isMonochrome) Color.White else backgroundColor.copy(alpha = 0.15f)
+    val tint = if (isMonochrome) Color.Black else backgroundColor
+
     Box(
         modifier = modifier
             .size(32.dp)
-            .background(backgroundColor, RoundedCornerShape(8.dp)),
+            .background(bg, RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             icon,
             contentDescription = null,
-            tint = iconTint,
+            tint = tint,
             modifier = Modifier.size(18.dp)
         )
     }
@@ -221,6 +226,7 @@ fun DeviceTypeBadge(
     val (icon, label, color) = when (deviceType) {
         DeviceType.MAC -> Triple(Icons.Default.Laptop, "Mac", MacDeviceColor)
         DeviceType.ANDROID -> Triple(Icons.Default.PhoneAndroid, "Android", AndroidDeviceColor)
+        DeviceType.WINDOWS -> Triple(Icons.Default.DesktopWindows, "Windows", WindowsDeviceColor)
         DeviceType.UNKNOWN -> Triple(Icons.Default.Devices, "Device", UnknownDeviceColor)
     }
 
@@ -245,7 +251,7 @@ fun DeviceTypeBadge(
 }
 
 enum class DeviceType {
-    MAC, ANDROID, UNKNOWN
+    MAC, ANDROID, WINDOWS, UNKNOWN
 }
 
 /**
@@ -262,10 +268,10 @@ fun guessDeviceType(name: String): DeviceType {
         lower.contains("realme") || lower.contains("poco") || lower.contains("motorola") ||
         lower.contains("huawei") || lower.contains("nokia") || lower.contains("lg") ||
         lower.contains("sony") || lower.contains("asus") || lower.contains("zte") -> DeviceType.ANDROID
-        // Filter out known Windows indicators
         lower.contains("windows") || lower.contains("surface") || lower.contains("dell") ||
-        lower.contains("hp ") || lower.contains("lenovo") || lower.contains("thinkpad") ||
-        lower.contains("asus desktop") -> DeviceType.UNKNOWN
+        lower.contains("hp ") || lower.contains("hp-") || lower.contains("lenovo") || lower.contains("thinkpad") ||
+        lower.contains("asus desktop") || lower.contains("acer") || lower.contains("msi") ||
+        lower.contains("desktop") || lower.contains("laptop") -> DeviceType.WINDOWS
         else -> DeviceType.UNKNOWN
     }
 }
@@ -299,5 +305,305 @@ fun ConnectionQualityIndicator(
             fontWeight = FontWeight.Bold,
             maxLines = 1
         )
+    }
+}
+
+/**
+ * Step indicator for the pairing flow: BT On → Scanning → Select → Connected
+ */
+@Composable
+fun ConnectionStepIndicator(
+    currentStep: Int, // 0=BT Off, 1=BT On/Ready, 2=Scanning, 3=Connected
+    modifier: Modifier = Modifier
+) {
+    val steps = listOf("Enable BT", "Scan", "Select", "Connected")
+    val stepIcons = listOf(
+        Icons.Default.Bluetooth,
+        Icons.Default.Search,
+        Icons.Default.TouchApp,
+        Icons.Default.CheckCircle
+    )
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Graphite.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+            .border(0.5.dp, BorderColor.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 12.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        steps.forEachIndexed { index, label ->
+            val isCompleted = index < currentStep
+            val isCurrent = index == currentStep
+            val color = when {
+                isCompleted -> SuccessGreen
+                isCurrent -> AccentBlue
+                else -> Silver.copy(alpha = 0.3f)
+            }
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .background(
+                            color.copy(alpha = if (isCurrent) 0.2f else if (isCompleted) 0.15f else 0.08f),
+                            CircleShape
+                        )
+                        .then(
+                            if (isCurrent) Modifier.border(1.5.dp, color, CircleShape) else Modifier
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        stepIcons[index],
+                        contentDescription = label,
+                        tint = color,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    label,
+                    color = color,
+                    fontSize = 9.sp,
+                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1
+                )
+            }
+
+            // Connector line between steps
+            if (index < steps.size - 1) {
+                Box(
+                    modifier = Modifier
+                        .height(1.5.dp)
+                        .width(16.dp)
+                        .background(
+                            if (isCompleted) SuccessGreen.copy(alpha = 0.5f) else BorderColor.copy(alpha = 0.2f),
+                            RoundedCornerShape(1.dp)
+                        )
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Premium device card for the redesigned pairing screen.
+ */
+@Composable
+fun AnimatedDeviceCard(
+    name: String,
+    deviceType: DeviceType,
+    subtitle: String,
+    isConnecting: Boolean = false,
+    isBonded: Boolean = false,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val (icon, iconColor) = when (deviceType) {
+        DeviceType.MAC -> Icons.Default.Laptop to MacDeviceColor
+        DeviceType.ANDROID -> Icons.Default.PhoneAndroid to AndroidDeviceColor
+        DeviceType.WINDOWS -> Icons.Default.DesktopWindows to WindowsDeviceColor
+        DeviceType.UNKNOWN -> Icons.Default.Devices to UnknownDeviceColor
+    }
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = if (isConnecting) iconColor.copy(alpha = 0.06f) else Graphite.copy(alpha = 0.6f),
+        border = androidx.compose.foundation.BorderStroke(
+            if (isConnecting) 1.dp else 0.5.dp,
+            if (isConnecting) iconColor.copy(alpha = 0.4f) else BorderColor.copy(alpha = 0.3f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(iconColor.copy(alpha = 0.12f), RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(22.dp))
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            name,
+                            color = Platinum,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                        if (isBonded) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = AccentGold.copy(alpha = 0.15f)
+                            ) {
+                                Text(
+                                    "PAIRED",
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                    color = AccentGold,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        subtitle,
+                        color = if (isConnecting) iconColor else Silver,
+                        fontSize = 12.sp,
+                        fontWeight = if (isConnecting) FontWeight.Medium else FontWeight.Normal
+                    )
+                }
+            }
+            if (isConnecting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = iconColor,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = Silver.copy(alpha = 0.4f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Quick-connect card for the last connected device. Shows at the top of the pairing screen
+ * for instant reconnection.
+ */
+@Composable
+fun QuickConnectCard(
+    deviceName: String,
+    lastConnectedTime: Long,
+    isConnecting: Boolean = false,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val deviceType = guessDeviceType(deviceName)
+    val (icon, iconColor) = when (deviceType) {
+        DeviceType.MAC -> Icons.Default.Laptop to MacDeviceColor
+        DeviceType.ANDROID -> Icons.Default.PhoneAndroid to AndroidDeviceColor
+        DeviceType.WINDOWS -> Icons.Default.DesktopWindows to WindowsDeviceColor
+        DeviceType.UNKNOWN -> Icons.Default.Devices to UnknownDeviceColor
+    }
+
+    val timeAgo = remember(lastConnectedTime) {
+        val diff = System.currentTimeMillis() - lastConnectedTime
+        when {
+            diff < 60_000 -> "just now"
+            diff < 3_600_000 -> "${diff / 60_000}m ago"
+            diff < 86_400_000 -> "${diff / 3_600_000}h ago"
+            else -> "${diff / 86_400_000}d ago"
+        }
+    }
+
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = iconColor.copy(alpha = 0.06f),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            iconColor.copy(alpha = 0.3f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(
+                        Brush.radialGradient(
+                            listOf(iconColor.copy(alpha = 0.2f), iconColor.copy(alpha = 0.05f))
+                        ),
+                        RoundedCornerShape(14.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(24.dp))
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    deviceName,
+                    color = Platinum,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.History,
+                        contentDescription = null,
+                        tint = Silver.copy(alpha = 0.5f),
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        "Last connected $timeAgo",
+                        color = Silver.copy(alpha = 0.6f),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+            if (isConnecting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = iconColor,
+                    strokeWidth = 2.5.dp
+                )
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = iconColor.copy(alpha = 0.15f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.FlashOn,
+                            contentDescription = null,
+                            tint = iconColor,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Connect",
+                            color = iconColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
     }
 }

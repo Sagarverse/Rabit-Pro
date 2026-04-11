@@ -31,6 +31,7 @@ class HidDeviceManager private constructor(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
     private var reconnectJob: Job? = null
+    private var connectionTimeoutJob: Job? = null
     private var isManuallyDisconnected = false
 
     private data class ReportRequest(val id: Int, val data: ByteArray)
@@ -86,11 +87,12 @@ class HidDeviceManager private constructor(private val context: Context) {
             when (state) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     reconnectJob?.cancel()
+                    connectionTimeoutJob?.cancel()
                     connectedDevice = device
                     _connectionState.value = ConnectionState.Connected(device?.name ?: "Unknown")
                     isManuallyDisconnected = false
                     scope.launch { 
-                        delay(1000)
+                        delay(300) // Reduced from 1000ms for faster initialization
                         sendReportInternal(1, ByteArray(8)) 
                     } 
                 }
@@ -111,7 +113,6 @@ class HidDeviceManager private constructor(private val context: Context) {
         scope.launch {
             for (request in reportChannel) {
                 sendReportInternal(request.id, request.data)
-                delay(10)
             }
         }
     }
@@ -135,8 +136,9 @@ class HidDeviceManager private constructor(private val context: Context) {
         }
         
         val sdpSettings = BluetoothHidDeviceAppSdpSettings(
-            "Rabit Pro", "Multimedia Keyboard", "Rabit",
-            BluetoothHidDevice.SUBCLASS1_KEYBOARD, HID_REPORT_DESCRIPTOR
+            "Rabit Pro", "Combo Peripheral", "Rabit",
+            0xC0.toByte(), // 0xC0 = Keyboard (0x40) | Mouse (0x80)
+            HID_REPORT_DESCRIPTOR
         )
         hidDevice?.registerApp(sdpSettings, null, null, executor, callback)
     }
@@ -155,7 +157,7 @@ class HidDeviceManager private constructor(private val context: Context) {
         reconnectJob = scope.launch {
             while (isActive && _connectionState.value is ConnectionState.Disconnected && (bluetoothAdapter?.isEnabled == true)) {
                 hidDevice?.connect(device)
-                delay(5000)
+                delay(2000) // Reduced from 5000ms for faster reconnection
             }
         }
     }
@@ -163,12 +165,48 @@ class HidDeviceManager private constructor(private val context: Context) {
     fun connect(device: BluetoothDevice) {
         if (bluetoothAdapter?.isEnabled != true) return
         isManuallyDisconnected = false
+        _connectionState.value = ConnectionState.Connecting
         hidDevice?.connect(device)
+        
+        // Start connection timeout — if not connected in 8s, emit Disconnected
+        connectionTimeoutJob?.cancel()
+        connectionTimeoutJob = scope.launch {
+            delay(8000)
+            if (_connectionState.value is ConnectionState.Connecting) {
+                _connectionState.value = ConnectionState.Disconnected
+            }
+        }
+    }
+
+    /**
+     * Attempts to connect up to [maxRetries] times with [retryDelayMs] gaps.
+     * Useful for Windows devices that often need multiple connection attempts.
+     */
+    fun connectWithRetry(device: BluetoothDevice, maxRetries: Int = 3, retryDelayMs: Long = 1500) {
+        if (bluetoothAdapter?.isEnabled != true) return
+        isManuallyDisconnected = false
+        _connectionState.value = ConnectionState.Connecting
+        
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            repeat(maxRetries) { attempt ->
+                if (_connectionState.value is ConnectionState.Connected) return@launch
+                Log.d("HidDeviceManager", "Connection attempt ${attempt + 1}/$maxRetries for ${device.name}")
+                hidDevice?.connect(device)
+                delay(retryDelayMs)
+            }
+            // After all retries, if still not connected, emit Disconnected
+            delay(3000) // Give the last attempt a chance
+            if (_connectionState.value !is ConnectionState.Connected) {
+                _connectionState.value = ConnectionState.Disconnected
+            }
+        }
     }
 
     fun disconnect() {
         isManuallyDisconnected = true
         reconnectJob?.cancel()
+        connectionTimeoutJob?.cancel()
         textPushJob?.cancel()
         connectedDevice?.let { hidDevice?.disconnect(it) }
         _connectionState.value = ConnectionState.Disconnected

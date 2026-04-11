@@ -15,6 +15,7 @@ interface KeyboardRepository {
     fun stopScanning()
     fun requestDiscoverable()
     fun connect(device: BluetoothDevice)
+    fun connectWithRetry(device: BluetoothDevice, maxRetries: Int = 3, retryDelayMs: Long = 1500)
     fun disconnect()
     fun sendKey(keyCode: Byte, modifier: Byte = 0)
     fun setModifier(modifier: Byte, active: Boolean)
