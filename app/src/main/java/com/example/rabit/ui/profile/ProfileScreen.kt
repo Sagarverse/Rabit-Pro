@@ -40,18 +40,7 @@ fun ProfileScreen(onBack: () -> Unit) {
         OrionBackground()
 
         Scaffold(
-            containerColor = Color.Transparent,
-            topBar = {
-                TopAppBar(
-                    title = { Text("About Developer", color = Platinum, fontWeight = FontWeight.Bold) },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Platinum)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                )
-            }
+            containerColor = Color.Transparent
         ) { padding ->
             Column(
                 modifier = Modifier
@@ -170,7 +159,7 @@ fun ProfileScreen(onBack: () -> Unit) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.WorkspacePremium, contentDescription = null, tint = AccentGold, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(12.dp))
-                            Text("Rabit Pro v1.5.0", color = Platinum, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text("PRO INFRASTRUCTURE", color = Platinum, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(

@@ -96,12 +96,8 @@ class BluetoothScanner(private val context: Context) {
             return
         }
 
-        // Immediately populate bonded devices for instant display
-        try {
-            _scannedDevices.value = adapter.bondedDevices ?: emptySet()
-        } catch (e: Exception) {
-            Log.w("BluetoothScanner", "Could not read bonded devices", e)
-        }
+        // We no longer pre-populate with bonded devices here.
+        // The UI (PairingScreen) will handle Bonded vs Nearby separation.
 
         // Start Classic Discovery
         val filter = IntentFilter(BluetoothDevice.ACTION_FOUND)

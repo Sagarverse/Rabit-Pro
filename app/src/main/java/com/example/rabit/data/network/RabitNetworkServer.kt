@@ -35,6 +35,10 @@ object RabitNetworkServer {
     // Bidirectional File Sharing
     var sharedFilesProvider: (() -> List<SharedFile>)? = null
     var fileDownloadProvider: ((String) -> android.net.Uri?)? = null
+    
+    // Universal Clipboard Callbacks
+    var clipboardProvider: (() -> String)? = null
+    var clipboardReceiver: ((String) -> Unit)? = null
 
     @Serializable
     data class ApiResponse(val success: Boolean, val message: String)
@@ -185,6 +189,8 @@ object RabitNetworkServer {
 
     <script>
         let sessionToken = null;
+        let lastKnownLocalClipboard = "";
+        let phoneClipboard = "";
 
         async function authenticate() {
             const pin = document.getElementById('pin-input').value;
@@ -198,11 +204,74 @@ object RabitNetworkServer {
                 if (data.success) {
                     sessionToken = data.message;
                     document.getElementById('auth-overlay').style.display = 'none';
+                    initClipboardEngine();
                     refreshSharedFiles();
                 } else {
                     alert('Invalid PIN');
                 }
             } catch (err) { alert('Connection Error'); }
+        }
+
+        // ───── Universal Clipboard Engine ─────
+        async function initClipboardEngine() {
+            // Initial Sync
+            syncClipboard();
+
+            // Sync on focus (Universal behavior)
+            window.addEventListener('focus', () => {
+                syncClipboard();
+            });
+
+            // Periodic sync (every 10s as safety)
+            setInterval(syncClipboard, 10000);
+        }
+
+        async function syncClipboard() {
+            if (!sessionToken) return;
+
+            try {
+                // 1. Pull from Phone
+                const res = await fetch('/clipboard', {
+                    headers: { 'X-Session-Token': sessionToken }
+                });
+                const data = await res.json();
+                
+                if (data.text && data.text !== phoneClipboard) {
+                    phoneClipboard = data.text;
+                    // If phone has something new, we might want to apply to Mac
+                    // Browsers strictly require user gesture for writeText, 
+                    // so we show a subtle indicator or copy it if focused.
+                    if (document.hasFocus()) {
+                        try {
+                            // Only try if it's different from what we think Mac has
+                            if (phoneClipboard !== lastKnownLocalClipboard) {
+                                await navigator.clipboard.writeText(phoneClipboard);
+                                lastKnownLocalClipboard = phoneClipboard;
+                                console.log("Applied Phone clipboard to Mac");
+                            }
+                        } catch (e) { console.log("Mac clipboard write blocked"); }
+                    }
+                }
+
+                // 2. Push to Phone (Read from Mac)
+                if (document.hasFocus()) {
+                    try {
+                        const macText = await navigator.clipboard.readText();
+                        if (macText && macText !== lastKnownLocalClipboard && macText !== phoneClipboard) {
+                            lastKnownLocalClipboard = macText;
+                            await fetch('/clipboard', {
+                                method: 'POST',
+                                headers: { 
+                                    'Content-Type': 'application/json',
+                                    'X-Session-Token': sessionToken 
+                                },
+                                body: JSON.stringify({ text: macText })
+                            });
+                            console.log("Pushed Mac clipboard to Phone");
+                        }
+                    } catch (e) { /* Permission restricted */ }
+                }
+            } catch (err) { console.error("Clipboard sync error:", err); }
         }
 
         async function refreshSharedFiles() {
@@ -365,6 +434,30 @@ object RabitNetworkServer {
                     } catch (e: Exception) {
                         Log.e(TAG, "Upload error", e)
                         call.respond(HttpStatusCode.InternalServerError, ApiResponse(false, e.message ?: "Error"))
+                    }
+                }
+
+                // ───── Feature: Universal Clipboard (Bi-directional) ─────
+                get("/clipboard") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@get
+                    }
+                    val text = clipboardProvider?.invoke() ?: ""
+                    call.respond(HttpStatusCode.OK, ClipboardPayload(text))
+                }
+
+                post("/clipboard") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@post
+                    }
+                    try {
+                        val payload = call.receive<ClipboardPayload>()
+                        clipboardReceiver?.invoke(payload.text)
+                        call.respond(HttpStatusCode.OK, ApiResponse(true, "Clipboard updated"))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiResponse(false, "Invalid payload"))
                     }
                 }
 

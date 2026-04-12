@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -12,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,12 +21,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.rabit.data.voice.VoiceState
 import com.example.rabit.ui.MainViewModel
-import com.example.rabit.ui.keyboard.PremiumBottomBar
+import com.example.rabit.ui.components.PremiumBottomBar
 import com.example.rabit.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -103,38 +107,6 @@ fun AssistantScreen(
         }
     ) {
         Scaffold(
-            topBar = {
-                PremiumChatTopBar(
-                    modelName = modelName,
-                    isThinking = uiState is AssistantUiState.Loading,
-                    connectionState = deviceConnectionState,
-                    onMenuClick = { scope.launch { drawerState.open() } },
-                    onClearChat = { viewModel.clearMessages() },
-                    onExportChat = {
-                        val fullChat = messages.joinToString("\n\n") { msg ->
-                            val role = if (msg.isUser) "You" else "Rabit AI"
-                            "$role:\n${msg.content}"
-                        }
-                        if (fullChat.isNotBlank()) {
-                            val sendIntent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                putExtra(Intent.EXTRA_TEXT, fullChat)
-                                type = "text/plain"
-                            }
-                            context.startActivity(Intent.createChooser(sendIntent, "Export Chat"))
-                        }
-                    },
-                    onLaunchpadClick = { showMacroLaunchpad = true },
-                    onSettingsClick = onNavigateToSettings
-                )
-            },
-            bottomBar = {
-                PremiumBottomBar(
-                    selectedTab = -1,
-                    onNavigateToAssistant = { /* Already here */ },
-                    onTabSelected = { onNavigateToKeyboard() }
-                )
-            },
             containerColor = ChatSurface
         ) { padding ->
             val modelLoadState by viewModel.modelLoadState.collectAsState()
@@ -194,6 +166,8 @@ fun AssistantScreen(
                         }
                     }
                 }
+                
+                Spacer(modifier = Modifier.height(1.dp))
 
                 // Sticky Bottom Input Area
                 PremiumInputArea(viewModel, mainViewModel)
@@ -288,6 +262,23 @@ fun MacroGenieModal(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp)),
+                trailingIcon = {
+                    val voiceState by viewModel.voiceState.collectAsState()
+                    val voiceResult by viewModel.voiceResult.collectAsState()
+                    
+                    if (voiceResult.isNotBlank() && voiceState == VoiceState.SUCCESS) {
+                        intent = voiceResult
+                        viewModel.resetVoiceState()
+                    }
+
+                    PulsingVoiceButton(
+                        state = voiceState,
+                        onClick = { 
+                            if (voiceState == VoiceState.LISTENING) viewModel.stopVoiceRecognition()
+                            else viewModel.startVoiceRecognition()
+                        }
+                    )
+                },
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Graphite.copy(alpha = 0.5f),
                     unfocusedContainerColor = Graphite.copy(alpha = 0.3f),
@@ -308,19 +299,50 @@ fun MacroGenieModal(
                         Text("AI is brewing your macro...", color = Silver, fontSize = 14.sp)
                     }
                 }
+                is com.example.rabit.ui.MainViewModel.GenieState.Executing -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Bolt, contentDescription = null, tint = AccentGold, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(state.currentStep, color = Platinum, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        
+                        LinearProgressIndicator(
+                            progress = { state.progress },
+                            modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+                            color = AccentGold,
+                            trackColor = Graphite
+                        )
+                        
+                        TextButton(
+                            onClick = { viewModel.cancelMacro() },
+                            modifier = Modifier.align(Alignment.End)
+                        ) {
+                            Text("ABORT SEQUENCE", color = ErrorRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
                 is com.example.rabit.ui.MainViewModel.GenieState.Success -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.CheckCircle, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("Executed HID sequence: ${state.macroName}", color = SuccessGreen, fontSize = 14.sp)
+                        Text("Macro Complete: ${state.macroName}", color = SuccessGreen, fontSize = 14.sp)
                     }
                 }
                 is com.example.rabit.ui.MainViewModel.GenieState.Error -> {
-                    Text(state.message, color = StopRed, fontSize = 14.sp)
+                    Column {
+                        Text(state.message, color = StopRed, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        com.example.rabit.ui.components.VibrantGradientButton(
+                            text = "Try Again",
+                            onClick = { viewModel.generateSmartMacro(intent) },
+                            gradient = Brush.linearGradient(listOf(Color(0xFF888888), Color(0xFF444444)))
+                        )
+                    }
                 }
                 else -> {
                     com.example.rabit.ui.components.VibrantGradientButton(
-                        text = "Generate & Run",
+                        text = "Summon Genie",
                         onClick = { viewModel.generateSmartMacro(intent) },
                         gradient = Brush.linearGradient(listOf(Color(0xFFFFD700), Color(0xFFFFA500)))
                     )
@@ -330,43 +352,59 @@ fun MacroGenieModal(
     }
 }
 
+
 @Composable
-fun AssistantDrawerContent(
-    viewModel: AssistantViewModel,
-    messageCount: Int,
-    onPromptLibraryClick: () -> Unit,
-    onHardwareMonitorClick: () -> Unit,
-    onMacroGenieClick: () -> Unit
+fun PulsingVoiceButton(
+    state: com.example.rabit.data.voice.VoiceState,
+    onClick: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        com.example.rabit.ui.components.PremiumSectionHeader("Tools")
+    val infiniteTransition = rememberInfiniteTransition(label = "voicePulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (state == com.example.rabit.data.voice.VoiceState.LISTENING) 1.25f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = if (state == com.example.rabit.data.voice.VoiceState.LISTENING) 0.8f else 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "alpha"
+    )
+
+    Box(contentAlignment = Alignment.Center) {
+        if (state == com.example.rabit.data.voice.VoiceState.LISTENING) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .graphicsLayer(scaleX = pulseScale, scaleY = pulseScale)
+                    .background(AccentGold.copy(alpha = pulseAlpha), CircleShape)
+            )
+        }
         
-        DrawerItem(
-            icon = Icons.Default.AutoAwesome,
-            label = "Macro Genie",
-            iconTint = AccentGold,
-            onClick = onMacroGenieClick
-        )
-        
-        DrawerItem(
-            icon = Icons.Default.LibraryBooks,
-            label = "Prompt Library",
-            onClick = onPromptLibraryClick
-        )
-        
-        DrawerItem(
-            icon = Icons.Default.Memory,
-            label = "Hardware Monitor",
-            onClick = onHardwareMonitorClick
-        )
-        
-        Spacer(modifier = Modifier.weight(1f))
-        
-        com.example.rabit.ui.components.PremiumSectionHeader("Recent Sessions")
-        Text("Your chat history will appear here", color = Silver.copy(alpha = 0.5f), fontSize = 12.sp, modifier = Modifier.padding(16.dp))
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier
+                .size(40.dp)
+                .background(
+                    if (state == com.example.rabit.data.voice.VoiceState.LISTENING) AccentGold.copy(alpha = 0.2f) 
+                    else Color.Transparent, 
+                    CircleShape
+                )
+        ) {
+            Icon(
+                if (state == com.example.rabit.data.voice.VoiceState.LISTENING) Icons.Default.Mic 
+                else Icons.Default.MicNone,
+                contentDescription = "Voice Input",
+                tint = if (state == com.example.rabit.data.voice.VoiceState.LISTENING) AccentGold else Silver,
+                modifier = Modifier.size(20.dp)
+            )
+        }
     }
 }

@@ -174,8 +174,16 @@
             <span id="status-text">Connected to Signaling Server</span>
         </div>
 
+        <!-- Step 1: Manual Peer ID Entry (Fallback) -->
+        <div class="pin-input-group" id="peer-setup" style="display: none;">
+            <p style="font-size: 12px; margin-bottom: 8px; opacity: 0.6">Enter the 6-character Peer ID from your Rabit mobile app</p>
+            <input type="text" id="manual-peer-field" maxlength="6" placeholder="PEERID" style="text-transform: uppercase;">
+            <button onclick="savePeerId()">Securely Link Peer</button>
+        </div>
+
+        <!-- Step 2: PIN Authorization -->
         <div class="pin-input-group" id="auth-section">
-            <p style="font-size: 12px; margin-bottom: 8px; opacity: 0.6">Enter the 4-digit PIN from your Rabit mobile app</p>
+            <p style="font-size: 12px; margin-bottom: 8px; opacity: 0.6">Enter the 4-digit security PIN from your phone</p>
             <input type="text" id="pin-field" maxlength="4" placeholder="••••" autocomplete="off">
             <button onclick="connect()">Authorize Device Bridge</button>
         </div>
@@ -190,31 +198,133 @@
 
     <div class="footer">Encrypted Peer-to-Peer Hub Security</div>
 
-    <script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // Firebase Configuration (Using defaults from Hosting context)
+        // These will be automatically populated if deployed to Firebase Hosting, 
+        // but for local dev, we use placeholders that the user can replace.
+        const firebaseConfig = {
+            storageBucket: "zoom-sagar.appspot.com",
+            projectId: "zoom-sagar",
+            appId: "1:262319086300:web:86f6a9c1e7c5b967f1307b"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
         // WebRTC & Connectivity Logic
-        const peerId = new URLSearchParams(window.location.search).get('peer');
+        let peerId = new URLSearchParams(window.location.search).get('peer');
         const statusText = document.getElementById('status-text');
         const authSection = document.getElementById('auth-section');
+        const peerSetup = document.getElementById('peer-setup');
         const fileHub = document.getElementById('file-hub');
+        const statusLight = document.getElementById('status-light');
 
-        if (!peerId) {
-            statusText.innerText = "Error: No Peer ID Provided in URL";
-            document.getElementById('status-light').style.background = "#FF453A";
-            authSection.style.display = 'none';
+        let pc = null;
+        let dataChannel = null;
+
+        window.savePeerId = function() {
+            const manualId = document.getElementById('manual-peer-field').value.trim();
+            if (manualId.length < 4) return alert("Please enter a valid Peer ID");
+            peerId = manualId;
+            init();
         }
 
-        function connect() {
+        async function init() {
+            if (!peerId) {
+                statusText.innerText = "Awaiting Peer Identity...";
+                statusLight.style.background = "#FFD60A";
+                statusLight.style.boxShadow = "0 0 10px #FFD60A";
+                authSection.style.display = 'none';
+                peerSetup.style.display = 'flex';
+            } else {
+                statusText.innerText = `Bridged to Peer: ${peerId.toUpperCase()}`;
+                peerSetup.style.display = 'none';
+                authSection.style.display = 'flex';
+                statusLight.style.background = "#0A84FF";
+                statusLight.style.boxShadow = "0 0 10px #0A84FF";
+            }
+        }
+
+        init();
+
+        window.connect = async function() {
             const pin = document.getElementById('pin-field').value;
             if (pin.length !== 4) return alert("Please enter the 4-digit security PIN");
 
-            statusText.innerText = "Syncing with Phone Peer...";
+            statusText.innerText = "Initializing Professional Secure Bridge...";
             
-            // Mock peer handshake for demonstration
-            setTimeout(() => {
+            try {
+                await startHandshake();
+            } catch (e) {
+                console.error(e);
+                statusText.innerText = "Bridge Handshake Failed";
+                statusLight.style.background = "#FF453A";
+            }
+        }
+
+        async function startHandshake() {
+            pc = new RTCPeerConnection({
+                iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }]
+            });
+
+            dataChannel = pc.createDataChannel("rabit_control");
+            setupDataChannel(dataChannel);
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    const signalRef = doc(db, "signals", peerId.toUpperCase());
+                    updateDoc(signalRef, {
+                        web_candidates: arrayUnion(JSON.stringify(event.candidate))
+                    });
+                }
+            };
+
+            // Create Offer
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            // Write Offer to Firestore
+            const signalRef = doc(db, "signals", peerId.toUpperCase());
+            await setDoc(signalRef, {
+                web_offer: offer.sdp,
+                timestamp: Date.now()
+            });
+
+            statusText.innerText = "Awaiting Phone Authorization...";
+
+            // Listen for Answer and Candidates from Phone
+            onSnapshot(signalRef, async (snapshot) => {
+                const data = snapshot.data();
+                if (!data) return;
+
+                if (data.app_answer && !pc.remoteDescription) {
+                    await pc.setRemoteDescription(new RTCSessionDescription({
+                        type: 'answer',
+                        sdp: data.app_answer
+                    }));
+                    statusText.innerText = "Identity Authenticated. Tunneling...";
+                }
+
+                if (data.app_candidates) {
+                    data.app_candidates.forEach(candStr => {
+                        const candidate = JSON.parse(candStr);
+                        pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {});
+                    });
+                }
+            });
+        }
+
+        function setupDataChannel(dc) {
+            dc.onopen = () => {
+                statusText.innerText = "Pro Bridge Active & Secure";
+                statusLight.style.background = "#34C759";
                 authSection.style.display = 'none';
                 fileHub.style.display = 'block';
-                statusText.innerText = "Bridge Secured & Active";
                 
+                // Demo file list refresh
                 document.getElementById('items').innerHTML = `
                     <div class="file-item">
                         <div>
@@ -224,7 +334,11 @@
                         <button style="padding: 8px 16px; font-size: 12px; background: transparent; border: 1px solid var(--accent-blue); color: var(--accent-blue); border-radius: 8px;">Retrieve</button>
                     </div>
                 `;
-            }, 1200);
+            };
+
+            dc.onmessage = (event) => {
+                console.log("P2P Message:", event.data);
+            };
         }
     </script>
 </body>

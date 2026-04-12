@@ -29,6 +29,7 @@ fun PremiumChatTopBar(
     connectionState: com.example.rabit.data.bluetooth.HidDeviceManager.ConnectionState,
     onMenuClick: () -> Unit,
     onClearChat: () -> Unit,
+    onNewChat: () -> Unit,
     onExportChat: () -> Unit,
     onLaunchpadClick: () -> Unit,
     onSettingsClick: () -> Unit
@@ -140,6 +141,9 @@ fun PremiumChatTopBar(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onNewChat) {
+                        Icon(Icons.Default.Add, contentDescription = "New Chat", tint = Platinum)
+                    }
                     IconButton(onClick = onLaunchpadClick) {
                         Icon(Icons.Default.RocketLaunch, contentDescription = "Launchpad", tint = AccentGold.copy(alpha = 0.9f))
                     }

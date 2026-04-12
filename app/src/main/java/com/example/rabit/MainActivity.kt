@@ -5,8 +5,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
@@ -45,9 +45,10 @@ import com.example.rabit.ui.settings.SettingsScreen
 import com.example.rabit.ui.shortcuts.ShortcutsGuideScreen
 import com.example.rabit.ui.snippets.SnippetsScreen
 import com.example.rabit.ui.profile.ProfileScreen
+import com.example.rabit.ui.automation.AutomationDashboardScreen
 import com.example.rabit.ui.theme.RabitTheme
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private val viewModel: MainViewModel by viewModels()
     private val assistantViewModel: AssistantViewModel by viewModels()
 
@@ -66,7 +67,11 @@ class MainActivity : ComponentActivity() {
                             startService(intent)
                         }
                     }
-                    AppNavigation(viewModel, assistantViewModel)
+                    
+                    val biometricEnabled by viewModel.biometricLockEnabled.collectAsState()
+                    com.example.rabit.ui.components.BiometricGuard(isEnabled = biometricEnabled) {
+                        AppNavigation(viewModel, assistantViewModel)
+                    }
                 }
             }
         }
@@ -101,34 +106,91 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
     val currentRoute = navBackStackEntry?.destination?.route ?: startDest
 
     // Routes that should NOT show the professional drawer (Onboarding & Initial Pairing)
-    val noDrawerRoutes = listOf("onboarding", "pairing", "onboarding_splash")
+    val noDrawerRoutes = listOf("onboarding", "pairing", "onboarding_splash", "assistant")
+    val showDrawer = currentRoute.split("?").first() !in noDrawerRoutes
 
-    if (currentRoute in noDrawerRoutes) {
-        NavHost(navController = navController, startDestination = startDest) {
-            composable("onboarding") {
-                OnboardingScreen(
-                    onComplete = {
-                        viewModel.markOnboardingCompleted()
-                        navController.navigate("pairing") {
-                            popUpTo("onboarding") { inclusive = true }
+    val navHost = @Composable { padding: androidx.compose.foundation.layout.PaddingValues ->
+        Box(modifier = Modifier.padding(padding)) {
+            NavHost(navController = navController, startDestination = startDest) {
+                composable("onboarding") {
+                    OnboardingScreen(
+                        onComplete = {
+                            viewModel.markOnboardingCompleted()
+                            navController.navigate("pairing") {
+                                popUpTo("onboarding") { inclusive = true }
+                            }
                         }
-                    }
-                )
-            }
-            composable("pairing") {
-                PairingScreen(
-                    viewModel = viewModel,
-                    onConnected = { navController.navigate("keyboard") },
-                    onNavigateToSettings = { navController.navigate("settings") },
-                    onNavigateToAssistant = { 
-                        navController.navigate("assistant")
-                    },
-                    onNavigateToWebBridge = { navController.navigate("web_bridge") }
-                )
+                    )
+                }
+                composable("pairing") {
+                    PairingScreen(
+                        viewModel = viewModel,
+                        onConnected = { navController.navigate("keyboard") },
+                        onNavigateToSettings = { navController.navigate("settings") },
+                        onNavigateToAssistant = { navController.navigate("assistant") },
+                        onNavigateToWebBridge = { navController.navigate("web_bridge") }
+                    )
+                }
+                composable("keyboard") {
+                    KeyboardScreen(
+                        viewModel = viewModel,
+                        onDisconnect = { navController.navigate("pairing") { popUpTo(0) } },
+                        onNavigateToSettings = { navController.navigate("settings") },
+                        onNavigateToAssistant = { navController.navigate("assistant") },
+                        onNavigateToSnippets = { navController.navigate("snippets") },
+                        onNavigateToShortcuts = { navController.navigate("shortcuts") },
+                        onNavigateToWebBridge = { navController.navigate("web_bridge") }
+                    )
+                }
+                composable("web_bridge") {
+                    com.example.rabit.ui.webbridge.WebBridgeScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable("automation") {
+                    AutomationDashboardScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable("assistant") {
+                    AssistantScreen(
+                        viewModel = assistantViewModel,
+                        mainViewModel = viewModel,
+                        onBack = { navController.popBackStack() },
+                        onNavigateToSettings = { navController.navigate("settings") },
+                        onNavigateToKeyboard = { navController.navigate("keyboard") }
+                    )
+                }
+                composable("settings") {
+                    SettingsScreen(
+                        viewModel,
+                        onBack = { navController.popBackStack() },
+                        onNavigateToProfile = { navController.navigate("profile") },
+                        onNavigateToCustomization = { navController.navigate("customization") }
+                    )
+                }
+                composable("customization") {
+                    com.example.rabit.ui.settings.CustomizationScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable("profile") {
+                    ProfileScreen(onBack = { navController.popBackStack() })
+                }
+                composable("snippets") {
+                    SnippetsScreen(viewModel, onBack = { navController.popBackStack() })
+                }
+                composable("shortcuts") {
+                    ShortcutsGuideScreen(viewModel, onBack = { navController.popBackStack() })
+                }
             }
         }
-    } else {
-        // Main Application Hub with Professional Drawer
+    }
+
+    if (showDrawer) {
         com.example.rabit.ui.components.RabitAppScaffold(
             currentRoute = if (currentRoute == "keyboard") "main" else currentRoute,
             onNavigate = { route ->
@@ -138,55 +200,13 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                     launchSingleTop = true
                     restoreState = true
                 }
-            }
+            },
+            onBack = { navController.popBackStack() }
         ) { padding ->
-            Box(modifier = Modifier.padding(padding)) {
-                NavHost(navController = navController, startDestination = "keyboard") {
-                    composable("keyboard") {
-                        KeyboardScreen(
-                            viewModel = viewModel,
-                            onDisconnect = { navController.navigate("pairing") { popUpTo(0) } },
-                            onNavigateToSettings = { navController.navigate("settings") },
-                            onNavigateToAssistant = { navController.navigate("assistant") },
-                            onNavigateToSnippets = { navController.navigate("snippets") },
-                            onNavigateToShortcuts = { navController.navigate("shortcuts") },
-                            onNavigateToWebBridge = { navController.navigate("web_bridge") }
-                        )
-                    }
-                    composable("web_bridge") {
-                        com.example.rabit.ui.webbridge.WebBridgeScreen(
-                            viewModel = viewModel,
-                            onBack = { navController.popBackStack() }
-                        )
-                    }
-                    composable("assistant") {
-                        AssistantScreen(
-                            viewModel = assistantViewModel,
-                            mainViewModel = viewModel,
-                            onBack = { navController.popBackStack() },
-                            onNavigateToSettings = { navController.navigate("settings") },
-                            onNavigateToKeyboard = { navController.navigate("keyboard") }
-                        )
-                    }
-                    composable("settings") {
-                        SettingsScreen(
-                            viewModel,
-                            onBack = { navController.popBackStack() },
-                            onNavigateToProfile = { navController.navigate("profile") }
-                        )
-                    }
-                    composable("profile") {
-                        ProfileScreen(onBack = { navController.popBackStack() })
-                    }
-                    composable("snippets") {
-                        SnippetsScreen(viewModel, onBack = { navController.popBackStack() })
-                    }
-                    composable("shortcuts") {
-                        ShortcutsGuideScreen(viewModel, onBack = { navController.popBackStack() })
-                    }
-                }
-            }
+            navHost(padding)
         }
+    } else {
+        navHost(androidx.compose.foundation.layout.PaddingValues(0.dp))
     }
 }
 

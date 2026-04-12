@@ -39,7 +39,8 @@ import com.example.rabit.ui.components.*
 fun SettingsScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit,
-    onNavigateToProfile: () -> Unit
+    onNavigateToProfile: () -> Unit,
+    onNavigateToCustomization: () -> Unit
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -74,17 +75,6 @@ fun SettingsScreen(
     var showImportDialog by remember { mutableStateOf(false) }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings", color = Platinum, fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Platinum)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Obsidian)
-            )
-        },
         containerColor = Obsidian
     ) { padding ->
         Column(
@@ -114,7 +104,7 @@ fun SettingsScreen(
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
-                        Text("Rabit Pro", color = Platinum, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("PRO LICENSE", color = Platinum, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         Text("Lifetime Professional License", color = AccentGold, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     }
                 }
@@ -125,13 +115,12 @@ fun SettingsScreen(
             // ─── Appearance ───
             PremiumSectionHeader("APPEARANCE")
             PremiumGlassCard {
-                SettingsToggleItem(
-                    title = "Colorful UI",
-                    subtitle = "Toggle premium dynamic coloring",
-                    icon = Icons.Default.Palette,
+                SettingsClickItem(
+                    title = "Advanced Customization",
+                    subtitle = "Personalize colors, security & gestures",
+                    icon = Icons.Default.Tune,
                     iconColor = AccentBlue,
-                    checked = !com.example.rabit.ui.theme.AppThemeMode.isMonochrome,
-                    onCheckedChange = { com.example.rabit.ui.theme.AppThemeMode.isMonochrome = !it }
+                    onClick = onNavigateToCustomization
                 )
             }
             
@@ -160,7 +149,7 @@ fun SettingsScreen(
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
                 SettingsClickItem(
-                    title = "Unlock Password",
+                    title = "Mac Unlock Password",
                     subtitle = "Mac unlock: ••••",
                     icon = Icons.Default.Lock,
                     iconColor = AccentOrange,

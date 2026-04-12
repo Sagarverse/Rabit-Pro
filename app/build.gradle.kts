@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+//  alias(libs.plugins.google.services)
 }
 
 android {
@@ -50,12 +51,14 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.biometric)
     
     implementation(libs.androidx.navigation.compose)
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     
     implementation(libs.okhttp)
     implementation(libs.androidx.security.crypto)
+    implementation("com.google.code.gson:gson:2.10.1")
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.content.negotiation)
@@ -67,6 +70,11 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.6.0")
     // WebRTC for P2P Hosting
     implementation("io.github.webrtc-sdk:android:125.6422.07")
+
+    // Firebase for Production Signaling
+//    implementation(platform(libs.firebase.bom))
+//    implementation(libs.firebase.firestore)
+//    implementation(libs.firebase.analytics)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

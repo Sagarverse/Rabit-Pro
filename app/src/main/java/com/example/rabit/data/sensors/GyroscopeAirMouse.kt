@@ -1,4 +1,4 @@
-package com.example.rabit.data.sensor
+package com.example.rabit.data.sensors
 
 import android.content.Context
 import android.hardware.Sensor

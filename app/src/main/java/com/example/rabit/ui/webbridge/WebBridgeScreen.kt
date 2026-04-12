@@ -51,6 +51,9 @@ fun WebBridgeScreen(
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val sharedFiles by viewModel.sharedFiles.collectAsState()
     val isMono = AppThemeMode.isMonochrome
+    val p2pEnabled by viewModel.p2pEnabled.collectAsState("false".toBoolean())
+    val peerId by viewModel.p2pPeerId.collectAsState(null)
+    val p2pStatus by viewModel.p2pStatus.collectAsState("Disconnected")
 
     // ActivityResultLauncher for picking files to share
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -85,46 +88,24 @@ fun WebBridgeScreen(
         RabitNetworkServer.fileDownloadProvider = { id ->
             sharedFiles.find { it.toString().hashCode().toString() == id }
         }
+
+        // Universal Clipboard Integration
+        val clipboardManager = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        
+        RabitNetworkServer.clipboardProvider = {
+            clipboardManager.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
+        }
+
+        RabitNetworkServer.clipboardReceiver = { text ->
+            if (text.isNotEmpty()) {
+                val clip = android.content.ClipData.newPlainText("Rabit Universal", text)
+                clipboardManager.setPrimaryClip(clip)
+            }
+        }
     }
 
     Scaffold(
-        containerColor = Obsidian,
-        topBar = {
-            TopAppBar(
-                title = { 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Image(
-                            painter = painterResource(id = R.drawable.rabit_logo),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Web Bridge", color = Platinum, fontSize = 18.sp, fontWeight = FontWeight.Black)
-                            Text("Pro Hub", color = if(isMono) Silver else AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Platinum)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Obsidian),
-                actions = {
-                    // Monochrome Mode Toggle
-                    IconButton(onClick = { AppThemeMode.isMonochrome = !AppThemeMode.isMonochrome }) {
-                        Icon(
-                            if (isMono) Icons.Default.InvertColorsOff else Icons.Default.InvertColors,
-                            contentDescription = "Toggle B&W Mode",
-                            tint = if (isMono) Silver else AccentBlue
-                        )
-                    }
-                }
-            )
-        }
+        containerColor = Obsidian
     ) { padding ->
         Column(
             modifier = Modifier
@@ -202,8 +183,25 @@ fun WebBridgeScreen(
 
             if (isRunning) {
                 // Connection Info Section
-                val serverUrl = if (localIp.isNotEmpty() && localIp != "0.0.0.0") 
+                val localUrl = if (localIp.isNotEmpty() && localIp != "0.0.0.0") 
                     "http://$localIp:8765" else "Identifying network..."
+                val gatewayBaseUrl = "https://zoom-sagar.web.app"
+                val p2pUrl = if (!peerId.isNullOrEmpty() && !p2pStatus.contains("Safe Mode")) "$gatewayBaseUrl/?peer=$peerId" else gatewayBaseUrl
+                
+                if (p2pStatus.contains("Safe Mode")) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                        color = ErrorRed.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, ErrorRed.copy(alpha = 0.4f))
+                    ) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CloudOff, null, tint = ErrorRed)
+                            Spacer(Modifier.width(16.dp))
+                            Text("Safe Mode: Cloud Features Disabled\n(Missing google-services.json)", color = Platinum, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
                 
                 // Passcode Card (Premium Glass)
                 Text("SECURITY PASSCODE", color = Silver, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
@@ -241,8 +239,8 @@ fun WebBridgeScreen(
                 ) {
                     Box(modifier = Modifier.padding(24.dp)) {
                         if (localIp.isNotEmpty() && localIp != "0.0.0.0") {
-                            val qrBitmap = remember(serverUrl) {
-                                QrCodeGenerator.generateQrCode(serverUrl, 512)?.asImageBitmap()
+                            val qrBitmap = remember(localUrl) {
+                                QrCodeGenerator.generateQrCode(localUrl, 512)?.asImageBitmap()
                             }
                             if (qrBitmap != null) {
                                 Image(bitmap = qrBitmap, contentDescription = "QR Code", modifier = Modifier.fillMaxSize())
@@ -258,8 +256,8 @@ fun WebBridgeScreen(
                 Surface(
                     onClick = {
                         if (localIp.isNotEmpty() && localIp != "0.0.0.0") {
-                            clipboardManager.setText(AnnotatedString(serverUrl))
-                            android.widget.Toast.makeText(context, "Link Copied!", android.widget.Toast.LENGTH_SHORT).show()
+                            clipboardManager.setText(AnnotatedString(localUrl))
+                            android.widget.Toast.makeText(context, "Local Link Copied!", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     },
                     color = SoftGrey,
@@ -269,16 +267,13 @@ fun WebBridgeScreen(
                     Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Link, null, tint = AccentBlue, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(serverUrl, color = Platinum, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text(localUrl, color = Platinum, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     }
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
 
                 // Internet P2P Hosting (Premium Card)
-                val p2pEnabled by viewModel.p2pEnabled.collectAsState("false".toBoolean())
-                val peerId by viewModel.p2pPeerId.collectAsState(null)
-                val p2pStatus by viewModel.p2pStatus.collectAsState("Disconnected")
 
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -292,7 +287,7 @@ fun WebBridgeScreen(
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("P2P Global Bridge", color = Platinum, fontSize = 16.sp, fontWeight = FontWeight.Black)
-                                Text("Secure access via internet", color = Silver, fontSize = 11.sp)
+                                Text("Secure access via zoom-sagar.web.app", color = Silver, fontSize = 11.sp)
                             }
                             Switch(
                                 checked = p2pEnabled,
@@ -307,10 +302,55 @@ fun WebBridgeScreen(
 
                         if (p2pEnabled) {
                             Spacer(modifier = Modifier.height(20.dp))
+                            
+                            if (peerId == null) {
+                                // Loading state for Peer ID synchronization
+                                Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        CircularProgressIndicator(color = AccentBlue, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text("Synchronizing Secure Signaling...", color = Silver, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                    }
+                                }
+                            } else {
+                                // Internet Gateway Link Card
+                                Surface(
+                                    onClick = {
+                                        clipboardManager.setText(AnnotatedString(p2pUrl))
+                                        android.widget.Toast.makeText(context, "Internet Gateway Copied!", android.widget.Toast.LENGTH_SHORT).show()
+                                    },
+                                    color = Obsidian,
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(1.dp, if(isMono) Silver.copy(alpha = 0.4f) else AccentBlue.copy(alpha = 0.4f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Language, null, tint = if(isMono) Platinum else AccentBlue, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("INTERNET GATEWAY URL", color = Silver, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            p2pUrl, 
+                                            color = if(isMono) Platinum else AccentBlue, 
+                                            fontSize = 13.sp, 
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text("TAP TO COPY PERSISTENT HUB LINK", color = Silver.copy(alpha = 0.5f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
                             Surface(color = Obsidian, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                                 Column(modifier = Modifier.padding(16.dp)) {
                                     Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text("PEER ID", color = Silver, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                                        Text("BRIDGE PEER ID", color = Silver, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                                         Box(
                                             modifier = Modifier
                                                 .background(if (p2pStatus == "P2P Connected") SuccessGreen.copy(alpha = 0.1f) else Silver.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
@@ -382,23 +422,6 @@ fun WebBridgeScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(40.dp))
-            
-            // Branding Footer
-            Image(
-                painter = painterResource(id = R.drawable.rabit_logo),
-                contentDescription = null,
-                modifier = Modifier.size(48.dp).alpha(0.3f)
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                "Rabit Pro File Sharing Hub\nEnd-to-End Local Infrastructure",
-                color = Silver.copy(alpha = 0.6f),
-                fontSize = 11.sp,
-                textAlign = TextAlign.Center,
-                lineHeight = 16.sp
-            )
-            
             Spacer(modifier = Modifier.height(24.dp))
         }
     }

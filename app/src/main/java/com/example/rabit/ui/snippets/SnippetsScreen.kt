@@ -38,23 +38,16 @@ fun SnippetsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     var expandedSnippet by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Quick Snippets", color = Platinum, fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Platinum)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add Snippet", tint = AccentGold)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Obsidian)
-            )
-        },
-        containerColor = Obsidian
+        containerColor = Obsidian,
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showAddDialog = true },
+                containerColor = AccentGold,
+                contentColor = Obsidian
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Snippet")
+            }
+        }
     ) { padding ->
         if (snippets.isEmpty()) {
             Box(

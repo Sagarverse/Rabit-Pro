@@ -1,4 +1,4 @@
-package com.example.rabit.ui.assistant
+package com.example.rabit.data.repository
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
@@ -8,6 +8,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.UUID
+import com.example.rabit.ui.assistant.ChatMessage
 
 @Serializable
 data class ChatSession(

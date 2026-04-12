@@ -22,6 +22,10 @@ import kotlinx.serialization.Serializable
 import android.speech.tts.TextToSpeech
 import java.util.Locale
 import android.app.DownloadManager
+import com.example.rabit.data.voice.VoiceAssistantManager
+import com.example.rabit.data.voice.VoiceState
+import com.example.rabit.data.repository.AssistantHistoryPersistence
+import com.example.rabit.data.repository.ChatSession
 
 @Serializable
 data class AttachedFile(val name: String, val content: String)
@@ -111,6 +115,10 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     val modelCopyProgress = localLlmManager.downloadProgress
     val modelLastError = localLlmManager.lastError
 
+    private val voiceAssistantManager = VoiceAssistantManager(application)
+    val voiceState = voiceAssistantManager.state
+    val voiceResult = voiceAssistantManager.result
+
     private val hidDeviceManager = com.example.rabit.data.bluetooth.HidDeviceManager.getInstance(application)
     val deviceConnectionState = hidDeviceManager.connectionState
 
@@ -156,6 +164,16 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             
             // Refresh model info
             refreshModelInfo()
+        }
+
+        // Observe voice results
+        viewModelScope.launch {
+            voiceAssistantManager.result.collect { result ->
+                if (result.isNotBlank() && voiceAssistantManager.state.value == VoiceState.SUCCESS) {
+                    onInputChanged(result)
+                    // If "Auto-Submit" is desired in the future, we could trigger sendPrompt here
+                }
+            }
         }
     }
 
@@ -468,6 +486,18 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         val cleanText = text.replace(Regex("```[\\s\\S]*?```"), "Code Block.")
                             .replace(Regex("[*#`]"), "")
         tts?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, UUID.randomUUID().toString())
+    }
+
+    fun startVoiceRecognition() {
+        voiceAssistantManager.startListening()
+    }
+
+    fun stopVoiceRecognition() {
+        voiceAssistantManager.stopListening()
+    }
+
+    fun resetVoiceState() {
+        voiceAssistantManager.reset()
     }
 
     override fun onCleared() {

@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.rabit.ui.theme.*
+import com.example.rabit.data.voice.VoiceState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.scale
@@ -335,10 +336,20 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
 
                         // Voice button (when idle)
                         if (input.isBlank() && !isLoading && sendButtonScale < 0.01f) {
-                            SpeechToTextButton(
-                                onResult = { viewModel.onInputChanged(it) },
-                                isRecording = isRecording,
-                                onRecordingStateChange = { isRecording = it }
+                            val voiceState by viewModel.voiceState.collectAsState()
+                            val voiceResult by viewModel.voiceResult.collectAsState()
+                            
+                            if (voiceResult.isNotBlank() && voiceState == VoiceState.SUCCESS) {
+                                viewModel.onInputChanged(voiceResult)
+                                viewModel.resetVoiceState()
+                            }
+
+                            PulsingVoiceButton(
+                                state = voiceState,
+                                onClick = { 
+                                    if (voiceState == VoiceState.LISTENING) viewModel.stopVoiceRecognition()
+                                    else viewModel.startVoiceRecognition()
+                                }
                             )
                         }
 

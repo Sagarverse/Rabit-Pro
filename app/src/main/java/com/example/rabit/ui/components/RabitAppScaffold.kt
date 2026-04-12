@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,11 +34,29 @@ import com.example.rabit.ui.theme.*
 fun RabitAppScaffold(
     currentRoute: String,
     onNavigate: (String) -> Unit,
+    onBack: (() -> Unit)? = null,
+    topBarActions: @Composable RowScope.() -> Unit = {},
     content: @Composable (PaddingValues) -> Unit
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val isMono = AppThemeMode.isMonochrome
+
+    // Main routes accessible from drawer
+    val mainRoutes = listOf("main", "keyboard", "web_bridge", "assistant", "settings")
+    val isSubPage = currentRoute !in mainRoutes
+
+    val screenTitle = when(currentRoute) {
+        "main", "keyboard" -> "CONTROL HUB"
+        "web_bridge" -> "WEB BRIDGE"
+        "assistant" -> "GENIE AI"
+        "settings" -> "SETTINGS"
+        "profile" -> "PROFILE"
+        "customization" -> "THEME"
+        "snippets" -> "SNIPPETS"
+        "shortcuts" -> "GUIDE"
+        else -> "RABIT PRO"
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -46,39 +65,18 @@ fun RabitAppScaffold(
                 drawerContainerColor = Obsidian,
                 drawerContentColor = Platinum,
                 drawerShape = RoundedCornerShape(topEnd = 32.dp, bottomEnd = 32.dp),
-                modifier = Modifier.width(320.dp).fillMaxHeight()
+                modifier = Modifier.width(320.dp).fillMaxHeight().background(Obsidian)
             ) {
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(64.dp))
                 
-                // Drawer Header
-                Row(
-                    modifier = Modifier.padding(24.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.rabit_logo),
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp).clip(CircleShape)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text("Rabit Pro", color = Platinum, fontSize = 20.sp, fontWeight = FontWeight.Black)
-                        Text("Infrastructure v2.0", color = if(isMono) Silver else AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                    }
-                }
-
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp), color = BorderColor.copy(alpha = 0.2f))
-                
-                Spacer(modifier = Modifier.height(24.dp))
-
                 // Navigation Items
                 DrawerItem(
-                    label = "Control Center",
+                    label = "Control Hub",
                     subLabel = "Keyboard & Trackpad",
                     icon = Icons.Default.Dvr,
-                    selected = currentRoute == "main",
+                    selected = currentRoute == "main" || currentRoute == "keyboard",
                     onClick = { 
-                        onNavigate("main")
+                        onNavigate("keyboard")
                         scope.launch { drawerState.close() }
                     }
                 )
@@ -90,6 +88,17 @@ fun RabitAppScaffold(
                     selected = currentRoute == "web_bridge",
                     onClick = { 
                         onNavigate("web_bridge")
+                        scope.launch { drawerState.close() }
+                    }
+                )
+
+                DrawerItem(
+                    label = "Automation Hub",
+                    subLabel = "Macros & Quick Actions",
+                    icon = Icons.Default.Bolt,
+                    selected = currentRoute == "automation",
+                    onClick = { 
+                        onNavigate("automation")
                         scope.launch { drawerState.close() }
                     }
                 )
@@ -120,14 +129,6 @@ fun RabitAppScaffold(
                 )
                 
                 Spacer(modifier = Modifier.height(24.dp))
-                
-                Text(
-                    "© 2026 Rabit Pro • Secured Hub",
-                    modifier = Modifier.padding(24.dp),
-                    color = Silver.copy(alpha = 0.4f),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                )
             }
         }
     ) {
@@ -136,50 +137,49 @@ fun RabitAppScaffold(
             topBar = {
                 CenterAlignedTopAppBar(
                     title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                when(currentRoute) {
-                                    "main" -> Icons.Default.Dvr
-                                    "web_bridge" -> Icons.Default.CloudSync
-                                    "assistant" -> Icons.Default.AutoAwesome
-                                    "settings" -> Icons.Default.Settings
-                                    else -> Icons.Default.Hub
-                                },
-                                contentDescription = null,
-                                tint = if(isMono) Platinum else AccentBlue,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                when(currentRoute) {
-                                    "main" -> "CONTROL HUB"
-                                    "web_bridge" -> "FILE BRIDGE"
-                                    "assistant" -> "GENIE AI"
-                                    "settings" -> "SYSTEM CONFIG"
-                                    else -> "RABIT HUB"
-                                },
+                                text = screenTitle,
                                 color = Platinum,
-                                fontSize = 14.sp,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 2.sp
+                            )
+                            Text(
+                                text = "PRO v2.5",
+                                color = AccentBlue.copy(alpha = 0.6f),
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
                             )
                         }
                     },
                     navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Open Sidebar", tint = Platinum)
+                        if (isSubPage && onBack != null) {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Platinum)
+                            }
+                        } else {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Platinum)
+                            }
                         }
                     },
                     actions = {
+                        topBarActions()
                         IconButton(onClick = { AppThemeMode.isMonochrome = !AppThemeMode.isMonochrome }) {
                             Icon(
                                 if(isMono) Icons.Default.InvertColorsOff else Icons.Default.InvertColors,
-                                contentDescription = "Toggle B&W Mode",
-                                tint = if(isMono) Silver else AccentBlue
+                                contentDescription = "Theme",
+                                tint = Platinum.copy(alpha = 0.7f),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Obsidian)
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = Obsidian,
+                        titleContentColor = Platinum
+                    )
                 )
             }
         ) { padding ->
@@ -197,6 +197,9 @@ fun DrawerItem(
     onClick: () -> Unit
 ) {
     val isMono = AppThemeMode.isMonochrome
+    // If mono is on, use Platinum for selection. Otherwise AccentBlue.
+    // BUT if the system background ever leaks to white, we'd need dark. 
+    // Since we force Obsidian, Platinum/AccentBlue is always safe on Obsidian.
     val tint = if (selected) (if(isMono) Platinum else AccentBlue) else Silver.copy(alpha = 0.6f)
     
     Surface(

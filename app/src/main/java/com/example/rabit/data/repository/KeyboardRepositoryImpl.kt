@@ -10,12 +10,15 @@ import kotlinx.coroutines.flow.StateFlow
 class KeyboardRepositoryImpl(context: Context) : KeyboardRepository {
     private val hidDeviceManager = HidDeviceManager.getInstance(context)
     private val bluetoothScanner = BluetoothScanner(context)
+    private val deviceRepository = com.example.rabit.data.repository.DeviceRepositoryImpl(context)
 
     override val connectionState: StateFlow<HidDeviceManager.ConnectionState> = hidDeviceManager.connectionState
     override val scannedDevices: StateFlow<Set<BluetoothDevice>> = bluetoothScanner.scannedDevices
     override val isScanning: StateFlow<Boolean> = bluetoothScanner.isScanning
     override val isPushPaused: StateFlow<Boolean> = hidDeviceManager.isPushPaused
     override val isTextPushing: StateFlow<Boolean> = hidDeviceManager.isTextPushing
+    override val knownWorkstations: StateFlow<List<com.example.rabit.domain.model.Workstation>> = deviceRepository.knownWorkstations
+    override var onShakeDetected: (() -> Unit)? = null
 
     override fun startScanning() {
         bluetoothScanner.startScanning()
@@ -23,6 +26,14 @@ class KeyboardRepositoryImpl(context: Context) : KeyboardRepository {
 
     override fun stopScanning() {
         bluetoothScanner.stopScanning()
+    }
+
+    override fun removeWorkstation(address: String) {
+        deviceRepository.removeWorkstation(address)
+    }
+
+    override fun updateWorkstationNickname(address: String, nickname: String) {
+        deviceRepository.updateNickname(address, nickname)
     }
 
     override fun requestDiscoverable() {
@@ -59,6 +70,10 @@ class KeyboardRepositoryImpl(context: Context) : KeyboardRepository {
 
     override fun sendMouseMove(dx: Float, dy: Float, buttons: Int, wheel: Int) {
         hidDeviceManager.sendMouseMove(dx, dy, buttons, wheel)
+    }
+
+    override fun sendDigitizerInput(x: Int, y: Int, isPressed: Boolean, inRange: Boolean) {
+        hidDeviceManager.sendDigitizerInput(x, y, isPressed, inRange)
     }
 
     override fun resetMouseAccumulator() {

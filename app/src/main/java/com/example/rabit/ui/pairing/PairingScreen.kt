@@ -362,15 +362,11 @@ fun PairingScreen(
                                 )
                                 Spacer(modifier = Modifier.height(24.dp))
                                 Button(
-                                    onClick = {
-                                        val btIntent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
-                                        btIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        context.startActivity(btIntent)
-                                    },
+                                    onClick = { viewModel.requestEnableBluetooth(context) },
                                     colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    Text("Open Settings to Enable", fontWeight = FontWeight.Bold)
+                                    Text("Enable Bluetooth", fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -418,29 +414,12 @@ fun PairingScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "BONDED DEVICES",
+                                "KNOWN WORKSTATIONS",
                                 color = Silver,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 1.sp
                             )
-                            if (isScanning) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    CircularProgressIndicator(modifier = Modifier.size(12.dp), color = AccentBlue, strokeWidth = 2.dp)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Scanning", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                }
-                            } else {
-                                TextButton(
-                                    onClick = { viewModel.startScanning() },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(24.dp)
-                                ) {
-                                    Icon(Icons.Default.Refresh, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Scan", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
                         }
                     }
 
@@ -490,14 +469,38 @@ fun PairingScreen(
                     }
 
                     item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            "NEARBY DEVICES",
-                            color = Silver,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "NEARBY DISCOVERIES",
+                                color = Silver,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                            
+                            if (isScanning) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(modifier = Modifier.size(12.dp), color = AccentBlue, strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Scanning", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+                            } else {
+                                TextButton(
+                                    onClick = { viewModel.startScanning() },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(24.dp)
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Scan Again", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                     }
 
                     // Filter out already bonded devices from scanned list

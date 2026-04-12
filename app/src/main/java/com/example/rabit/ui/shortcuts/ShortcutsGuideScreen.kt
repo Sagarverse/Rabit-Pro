@@ -44,22 +44,6 @@ fun ShortcutsGuideScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     var expandedCategory by remember { mutableStateOf<String?>(categories.first().name) }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text("Mac Shortcuts", color = Platinum, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("Tap any shortcut to execute", color = Silver, fontSize = 11.sp)
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Platinum)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Obsidian)
-            )
-        },
         containerColor = Obsidian
     ) { padding ->
         LazyColumn(

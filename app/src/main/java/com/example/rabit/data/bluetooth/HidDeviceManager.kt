@@ -23,6 +23,7 @@ class HidDeviceManager private constructor(private val context: Context) {
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private var hidDevice: BluetoothHidDevice? = null
     private var connectedDevice: BluetoothDevice? = null
+    private var deviceRepository: com.example.rabit.domain.repository.DeviceRepository? = null
     
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState
@@ -90,6 +91,12 @@ class HidDeviceManager private constructor(private val context: Context) {
                     connectionTimeoutJob?.cancel()
                     connectedDevice = device
                     _connectionState.value = ConnectionState.Connected(device?.name ?: "Unknown")
+                    
+                    // Save to known workstations
+                    device?.let { 
+                        deviceRepository?.saveWorkstation(it.address, it.name ?: "Unknown Workstation")
+                    }
+                    
                     isManuallyDisconnected = false
                     scope.launch { 
                         delay(300) // Reduced from 1000ms for faster initialization
@@ -109,6 +116,8 @@ class HidDeviceManager private constructor(private val context: Context) {
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
         context.registerReceiver(bluetoothStateReceiver, filter)
         initProfiles()
+        
+        deviceRepository = com.example.rabit.data.repository.DeviceRepositoryImpl(context)
         
         scope.launch {
             for (request in reportChannel) {
@@ -131,16 +140,18 @@ class HidDeviceManager private constructor(private val context: Context) {
     }
 
     private fun registerApp() {
-        if (bluetoothAdapter?.name != "Rabit Pro") {
-            bluetoothAdapter?.name = "Rabit Pro"
+        scope.launch(Dispatchers.IO) {
+            if (bluetoothAdapter?.name != "Infrastructure Hub") {
+                bluetoothAdapter?.name = "Infrastructure Hub"
+            }
+            
+            val sdpSettings = BluetoothHidDeviceAppSdpSettings(
+                "Infrastructure Hub", "Combo Peripheral", "Infrastructure",
+                0xC0.toByte(), // 0xC0 = Keyboard (0x40) | Mouse (0x80)
+                HID_REPORT_DESCRIPTOR
+            )
+            hidDevice?.registerApp(sdpSettings, null, null, executor, callback)
         }
-        
-        val sdpSettings = BluetoothHidDeviceAppSdpSettings(
-            "Rabit Pro", "Combo Peripheral", "Rabit",
-            0xC0.toByte(), // 0xC0 = Keyboard (0x40) | Mouse (0x80)
-            HID_REPORT_DESCRIPTOR
-        )
-        hidDevice?.registerApp(sdpSettings, null, null, executor, callback)
     }
 
     fun requestDiscoverable() {
@@ -166,14 +177,17 @@ class HidDeviceManager private constructor(private val context: Context) {
         if (bluetoothAdapter?.isEnabled != true) return
         isManuallyDisconnected = false
         _connectionState.value = ConnectionState.Connecting
-        hidDevice?.connect(device)
         
-        // Start connection timeout — if not connected in 8s, emit Disconnected
-        connectionTimeoutJob?.cancel()
-        connectionTimeoutJob = scope.launch {
-            delay(8000)
-            if (_connectionState.value is ConnectionState.Connecting) {
-                _connectionState.value = ConnectionState.Disconnected
+        scope.launch(Dispatchers.IO) {
+            hidDevice?.connect(device)
+            
+            // Start connection timeout within the background scope
+            connectionTimeoutJob?.cancel()
+            connectionTimeoutJob = launch {
+                delay(8000)
+                if (_connectionState.value is ConnectionState.Connecting) {
+                    _connectionState.value = ConnectionState.Disconnected
+                }
             }
         }
     }
@@ -332,6 +346,20 @@ class HidDeviceManager private constructor(private val context: Context) {
         reportChannel.trySend(ReportRequest(1, ByteArray(8)))
     }
 
+    fun sendDigitizerInput(x: Int, y: Int, isPressed: Boolean, inRange: Boolean) {
+        val report = ByteArray(5).apply {
+            var flags = 0
+            if (isPressed) flags = flags or 0x01
+            if (inRange) flags = flags or 0x02
+            this[0] = flags.toByte()
+            this[1] = (x and 0xFF).toByte()
+            this[2] = ((x shr 8) and 0xFF).toByte()
+            this[3] = (y and 0xFF).toByte()
+            this[4] = ((y shr 8) and 0xFF).toByte()
+        }
+        reportChannel.trySend(ReportRequest(4, report))
+    }
+
     fun unlockMac(password: String) {
         scope.launch {
             sendKeyPress(0x28, useSticky = false) // Enter
@@ -441,7 +469,35 @@ class HidDeviceManager private constructor(private val context: Context) {
             0x95.toByte(), 0x03.toByte(), //     Report Count (3)
             0x81.toByte(), 0x06.toByte(), //     Input (Data,Var,Rel)
             0xC0.toByte(),               //   End Collection
-            0xC0.toByte()                // End Collection
+            0xC0.toByte(),               // End Collection
+
+            // Digitizer / Pen (ID 4)
+            0x05.toByte(), 0x0D.toByte(), // Usage Page (Digitizer)
+            0x09.toByte(), 0x02.toByte(), // Usage (Pen)
+            0xA1.toByte(), 0x01.toByte(), // Collection (Application)
+            0x85.toByte(), 0x04.toByte(), //   Report ID (4)
+            0x09.toByte(), 0x20.toByte(), //   Usage (Stylus)
+            0xA1.toByte(), 0x00.toByte(), //   Collection (Physical)
+            0x09.toByte(), 0x42.toByte(), //     Usage (Tip Switch)
+            0x09.toByte(), 0x32.toByte(), //     Usage (In Range)
+            0x15.toByte(), 0x00.toByte(), //     Logical Minimum (0)
+            0x25.toByte(), 0x01.toByte(), //     Logical Maximum (1)
+            0x75.toByte(), 0x01.toByte(), //     Report Size (1)
+            0x95.toByte(), 0x02.toByte(), //     Report Count (2)
+            0x81.toByte(), 0x02.toByte(), //     Input (Data,Var,Abs)
+            0x95.toByte(), 0x01.toByte(), //     Report Count (1)
+            0x75.toByte(), 0x06.toByte(), //     Report Size (6)
+            0x81.toByte(), 0x03.toByte(), //     Input (Cnst,Var,Abs) - Padding
+            0x05.toByte(), 0x01.toByte(), //     Usage Page (Generic Desktop)
+            0x09.toByte(), 0x30.toByte(), //     Usage (X)
+            0x09.toByte(), 0x31.toByte(), //     Usage (Y)
+            0x16.toByte(), 0x00.toByte(), 0x00.toByte(), // Logical Minimum (0)
+            0x26.toByte(), 0xFF.toByte(), 0x7F.toByte(), // Logical Maximum (32767)
+            0x75.toByte(), 0x10.toByte(), //     Report Size (16)
+            0x95.toByte(), 0x02.toByte(), //     Report Count (2)
+            0x81.toByte(), 0x02.toByte(), //     Input (Data,Var,Abs)
+            0xC0.toByte(),                //   End Collection
+            0xC0.toByte()                 // End Collection
         )
     }
 }

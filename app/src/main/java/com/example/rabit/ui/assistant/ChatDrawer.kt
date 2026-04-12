@@ -20,13 +20,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.rabit.ui.theme.*
+import com.example.rabit.data.repository.ChatSession
 
 @Composable
 fun AssistantDrawerContent(
     viewModel: AssistantViewModel, 
     messageCount: Int = 0,
     onPromptLibraryClick: () -> Unit,
-    onHardwareMonitorClick: () -> Unit
+    onHardwareMonitorClick: () -> Unit,
+    onMacroGenieClick: () -> Unit
 ) {
     val chatSessions by viewModel.chatSessions.collectAsState()
     val currentSessionId by viewModel.currentSessionId.collectAsState()
@@ -39,30 +41,8 @@ fun AssistantDrawerContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(top = 24.dp)
+            .padding(top = 16.dp)
     ) {
-        // Header
-        Row(
-            modifier = Modifier.padding(horizontal = 20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .background(
-                        Brush.linearGradient(listOf(AiViolet, AiIndigo)),
-                        RoundedCornerShape(10.dp)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Hub, contentDescription = null, tint = Color.Black, modifier = Modifier.size(20.dp))
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text("Memory Hub", color = Platinum, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                Text("Sessions & Models", color = Silver.copy(alpha = 0.4f), fontSize = 12.sp)
-            }
-        }
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -104,7 +84,8 @@ fun AssistantDrawerContent(
         )
         Spacer(modifier = Modifier.height(12.dp))
         Column(modifier = Modifier.padding(horizontal = 8.dp)) {
-            DrawerItem(Icons.Default.Description, "Prompt Library", AccentGold, onClick = onPromptLibraryClick)
+            DrawerItem(Icons.Default.AutoAwesome, "Macro Genie", AccentGold, onClick = onMacroGenieClick)
+            DrawerItem(Icons.Default.LibraryBooks, "Prompt Library", Silver, onClick = onPromptLibraryClick)
             DrawerItem(Icons.Default.Memory, "Hardware Monitor", Silver, onClick = onHardwareMonitorClick)
         }
 

@@ -9,6 +9,14 @@ import okhttp3.*
 import org.json.JSONObject
 import org.webrtc.*
 import java.util.*
+import java.nio.ByteBuffer
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+// Phase 11: Safe Mode - Firebase Disabled
+// import com.google.firebase.firestore.FirebaseFirestore
+// import com.google.firebase.firestore.MetadataChanges
+// import com.google.firebase.firestore.SetOptions
+// import com.google.firebase.firestore.ListenerRegistration
 
 class WebRtcManager(private val context: Context) {
     private val TAG = "WebRtcManager"
@@ -24,10 +32,13 @@ class WebRtcManager(private val context: Context) {
     private var peerConnection: PeerConnection? = null
     private var dataChannel: DataChannel? = null
     private var pcf: PeerConnectionFactory? = null
+
+    private val _incomingDataFlow = MutableSharedFlow<Pair<String, Any>>(extraBufferCapacity = 64)
+    val incomingDataFlow = _incomingDataFlow.asSharedFlow()
     
-    private var webSocket: WebSocket? = null
-    private val client = OkHttpClient()
-    private val signalingUrl = "wss://0-signaling.com" 
+    // Phase 11: Safe Mode - Firestore logic disabled
+    // private val firestore = FirebaseFirestore.getInstance()
+    // private var signalingListener: ListenerRegistration? = null
 
     fun start() {
         if (_peerId.value != null) return
@@ -36,7 +47,8 @@ class WebRtcManager(private val context: Context) {
         _peerId.value = uniqueId
         
         initializeWebRtc()
-        setupSignaling(uniqueId)
+        // setupFirestoreSignaling(uniqueId)
+        _connectionStatus.value = "Safe Mode: No Cloud Signaling"
     }
 
     private fun initializeWebRtc() {
@@ -52,7 +64,10 @@ class WebRtcManager(private val context: Context) {
 
         val iceServers = listOf(
             PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
-            PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer()
+            PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun2.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun3.l.google.com:19302").createIceServer(),
+            PeerConnection.IceServer.builder("stun:stun4.l.google.com:19302").createIceServer()
         )
 
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
@@ -61,11 +76,7 @@ class WebRtcManager(private val context: Context) {
 
         peerConnection = pcf?.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
             override fun onIceCandidate(candidate: IceCandidate) {
-                sendSignalingMessage("candidate", JSONObject().apply {
-                    put("sdpMid", candidate.sdpMid)
-                    put("sdpMLineIndex", candidate.sdpMLineIndex)
-                    put("candidate", candidate.sdp)
-                })
+                sendIceCandidate(candidate)
             }
 
             override fun onDataChannel(dc: DataChannel) {
@@ -90,7 +101,7 @@ class WebRtcManager(private val context: Context) {
 
         // Create initial DataChannel as host
         val dcInit = DataChannel.Init()
-        dataChannel = peerConnection?.createDataChannel("rabit_control", dcInit)
+        dataChannel = peerConnection?.createDataChannel("file_hub", dcInit)
         dataChannel?.let { setupDataChannel(it) }
     }
 
@@ -106,12 +117,29 @@ class WebRtcManager(private val context: Context) {
             }
 
             override fun onMessage(buffer: DataChannel.Buffer) {
-                val data = ByteArray(buffer.data.remaining())
-                buffer.data.get(data)
-                val message = String(data)
-                handleP2pMessage(message)
+                val data = buffer.data
+                if (buffer.binary) {
+                    val bytes = ByteArray(data.remaining())
+                    data.get(bytes)
+                    _incomingDataFlow.tryEmit("FILE_CHUNK" to bytes)
+                } else {
+                    val bytes = ByteArray(data.remaining())
+                    data.get(bytes)
+                    val text = String(bytes)
+                    _incomingDataFlow.tryEmit("METADATA" to text)
+                }
             }
         })
+    }
+
+    fun sendData(text: String) {
+        val buffer = ByteBuffer.wrap(text.toByteArray())
+        dataChannel?.send(DataChannel.Buffer(buffer, false))
+    }
+
+    fun sendBinary(bytes: ByteArray) {
+        val buffer = ByteBuffer.wrap(bytes)
+        dataChannel?.send(DataChannel.Buffer(buffer, true))
     }
 
     private fun handleP2pMessage(message: String) {
@@ -124,36 +152,57 @@ class WebRtcManager(private val context: Context) {
         }
     }
 
-    private fun setupSignaling(id: String) {
-        val request = Request.Builder().url("$signalingUrl/$id").build()
-        webSocket = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                val json = JSONObject(text)
-                when (json.getString("type")) {
-                    "offer" -> handleOffer(json.getJSONObject("sdp"))
-                    "answer" -> handleAnswer(json.getJSONObject("sdp"))
-                    "candidate" -> handleRemoteCandidate(json.getJSONObject("candidate"))
+    /* Phase 11 Safe Mode: Firestore logic commented out
+    private fun setupFirestoreSignaling(id: String) {
+        val signalRef = firestore.collection("signals").document(id)
+        
+        // Initial clear of old signals
+        signalRef.delete()
+        
+        signalingListener = signalRef.addSnapshotListener { snapshot, e ->
+            if (e != null) {
+                Log.e(TAG, "Signaling Listen failed", e)
+                _connectionStatus.value = "Signaling Offline"
+                return@addSnapshotListener
+            }
+
+            if (snapshot != null && snapshot.exists()) {
+                val data = snapshot.data ?: return@addSnapshotListener
+                
+                // Web Bridge will send 'offer' or 'answer'
+                val offer = data["web_offer"] as? String
+                val answer = data["web_answer"] as? String
+                val candidates = data["web_candidates"] as? List<String> ?: emptyList()
+
+                if (offer != null && peerConnection?.remoteDescription == null) {
+                    handleOffer(offer)
+                } else if (answer != null && peerConnection?.remoteDescription == null) {
+                    handleAnswer(answer)
+                }
+
+                // Handle accumulated candidates
+                candidates.forEach { candStr ->
+                    handleRemoteCandidateString(candStr)
                 }
             }
+        }
+    }
+    */
 
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "Signaling failed", t)
-                _connectionStatus.value = "Signaling Offline"
-            }
-        })
+    private fun sendIceCandidate(candidate: IceCandidate) {
+        Log.d(TAG, "Safe Mode: Skipping ICE candidate upload")
     }
 
-    private fun handleOffer(sdpJson: JSONObject) {
-        val sdp = SessionDescription(SessionDescription.Type.OFFER, sdpJson.getString("sdp"))
+    private fun handleOffer(sdpStr: String) {
+        val sdp = SessionDescription(SessionDescription.Type.OFFER, sdpStr)
         peerConnection?.setRemoteDescription(object : SdpObserver {
             override fun onCreateSuccess(p0: SessionDescription?) {}
             override fun onSetSuccess() {
                 peerConnection?.createAnswer(object : SdpObserver {
                     override fun onCreateSuccess(answer: SessionDescription) {
                         peerConnection?.setLocalDescription(this, answer)
-                        sendSignalingMessage("answer", JSONObject().apply {
-                            put("sdp", answer.description)
-                        })
+                        val peerId = _peerId.value ?: return
+                        Log.d(TAG, "Safe Mode: Skipping local description upload")
                     }
                     override fun onSetSuccess() {}
                     override fun onCreateFailure(p0: String?) {}
@@ -165,8 +214,8 @@ class WebRtcManager(private val context: Context) {
         }, sdp)
     }
 
-    private fun handleAnswer(sdpJson: JSONObject) {
-        val sdp = SessionDescription(SessionDescription.Type.ANSWER, sdpJson.getString("sdp"))
+    private fun handleAnswer(sdpStr: String) {
+        val sdp = SessionDescription(SessionDescription.Type.ANSWER, sdpStr)
         peerConnection?.setRemoteDescription(object : SdpObserver {
             override fun onCreateSuccess(p0: SessionDescription?) {}
             override fun onSetSuccess() {}
@@ -175,25 +224,33 @@ class WebRtcManager(private val context: Context) {
         }, sdp)
     }
 
-    private fun handleRemoteCandidate(json: JSONObject) {
-        val candidate = IceCandidate(
-            json.getString("sdpMid"),
-            json.getInt("sdpMLineIndex"),
-            json.getString("candidate")
-        )
-        peerConnection?.addIceCandidate(candidate)
+    private fun handleRemoteCandidateString(candStr: String) {
+        try {
+            val json = JSONObject(candStr)
+            val candidate = IceCandidate(
+                json.getString("sdpMid"),
+                json.getInt("sdpMLineIndex"),
+                json.getString("candidate")
+            )
+            peerConnection?.addIceCandidate(candidate)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing remote candidate", e)
+        }
     }
 
-    private fun sendSignalingMessage(type: String, data: JSONObject) {
-        webSocket?.send(JSONObject().apply {
-            put("type", type)
-            put(type, data)
-        }.toString())
-    }
+    // Legacy WebSocket signaling removed for Firestore P2P focus
 
     fun stop() {
-        webSocket?.close(1000, "User stopped")
+        // signalingListener?.remove()
+        dataChannel?.close()
         peerConnection?.close()
+        pcf?.dispose()
+        
+        // signalingListener = null
+        dataChannel = null
+        peerConnection = null
+        pcf = null
+        
         _peerId.value = null
         _connectionStatus.value = "Disconnected"
     }

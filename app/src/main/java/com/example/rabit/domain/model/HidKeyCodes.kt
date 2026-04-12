@@ -77,6 +77,9 @@ object HidKeyCodes {
     const val KEY_DOWN: Byte = 0x51
     const val KEY_UP: Byte = 0x52
     
+    const val KEY_POWER: Byte = 0x66.toByte()
+    const val KEY_EJECT: Byte = 0xB8.toShort().toByte() // Note: Often in consumer page, but some keyboards map as regular key
+    
     const val MODIFIER_NONE: Byte = 0
     const val MODIFIER_LEFT_CTRL: Byte = 0x01
     const val MODIFIER_LEFT_SHIFT: Byte = 0x02

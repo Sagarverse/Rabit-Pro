@@ -58,7 +58,9 @@ class HidService : Service() {
         // Check if Web Bridge should auto-start from preferences
         val prefs = getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
         if (prefs.getBoolean("web_bridge_enabled", false)) {
-            RabitNetworkServer.start(this, encryptionManager)
+            serviceScope.launch(Dispatchers.IO) {
+                RabitNetworkServer.start(this@HidService, encryptionManager)
+            }
         }
     }
 
@@ -118,7 +120,9 @@ class HidService : Service() {
         when (intent?.action) {
             ACTION_START_WEB_BRIDGE -> {
                 if (!RabitNetworkServer.isRunning) {
-                    RabitNetworkServer.start(this, encryptionManager)
+                    serviceScope.launch(Dispatchers.IO) {
+                        RabitNetworkServer.start(this@HidService, encryptionManager)
+                    }
                     getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE).edit().putBoolean("web_bridge_enabled", true).apply()
                 }
             }

@@ -26,9 +26,9 @@ import com.example.rabit.ui.theme.*
 
 @Composable
 fun PremiumInputArea(viewModel: AssistantViewModel, mainViewModel: MainViewModel) {
-    val isPushPaused by mainViewModel.isPushPaused.collectAsState()
-    val isTextPushing by mainViewModel.isTextPushing.collectAsState()
-    val messages by viewModel.messages.collectAsState()
+    val isPushPaused by mainViewModel.isPushPaused.collectAsState(initial = false)
+    val isTextPushing by mainViewModel.isTextPushing.collectAsState(initial = false)
+    val messages by viewModel.messages.collectAsState(initial = emptyList())
 
     Surface(
         color = ChatSurface,
