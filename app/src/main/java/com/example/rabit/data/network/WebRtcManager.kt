@@ -12,11 +12,11 @@ import java.util.*
 import java.nio.ByteBuffer
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-// Phase 11: Safe Mode - Firebase Disabled
-// import com.google.firebase.firestore.FirebaseFirestore
-// import com.google.firebase.firestore.MetadataChanges
-// import com.google.firebase.firestore.SetOptions
-// import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.ListenerRegistration
 
 class WebRtcManager(private val context: Context) {
     private val TAG = "WebRtcManager"
@@ -35,20 +35,20 @@ class WebRtcManager(private val context: Context) {
 
     private val _incomingDataFlow = MutableSharedFlow<Pair<String, Any>>(extraBufferCapacity = 64)
     val incomingDataFlow = _incomingDataFlow.asSharedFlow()
-    
-    // Phase 11: Safe Mode - Firestore logic disabled
-    // private val firestore = FirebaseFirestore.getInstance()
-    // private var signalingListener: ListenerRegistration? = null
+
+    private val firestore = FirebaseFirestore.getInstance()
+    private var signalingListener: ListenerRegistration? = null
+    private val processedRemoteCandidates = mutableSetOf<String>()
 
     fun start() {
         if (_peerId.value != null) return
         
         val uniqueId = UUID.randomUUID().toString().take(6).uppercase()
         _peerId.value = uniqueId
-        
+
         initializeWebRtc()
-        // setupFirestoreSignaling(uniqueId)
-        _connectionStatus.value = "Safe Mode: No Cloud Signaling"
+        setupFirestoreSignaling(uniqueId)
+        _connectionStatus.value = "Awaiting Peer"
     }
 
     private fun initializeWebRtc() {
@@ -142,24 +142,23 @@ class WebRtcManager(private val context: Context) {
         dataChannel?.send(DataChannel.Buffer(buffer, true))
     }
 
-    private fun handleP2pMessage(message: String) {
-        try {
-            val json = JSONObject(message)
-            val type = json.optString("type")
-            // Legacy P2P controls removed for File Hub focus
-        } catch (e: Exception) {
-            Log.e(TAG, "Error parsing P2P message: $message", e)
-        }
-    }
-
-    /* Phase 11 Safe Mode: Firestore logic commented out
     private fun setupFirestoreSignaling(id: String) {
         val signalRef = firestore.collection("signals").document(id)
-        
-        // Initial clear of old signals
-        signalRef.delete()
-        
-        signalingListener = signalRef.addSnapshotListener { snapshot, e ->
+
+        // Reset stale signaling data for this short-lived peer id.
+        signalRef.set(
+            mapOf(
+                "web_offer" to null,
+                "web_answer" to null,
+                "web_candidates" to emptyList<String>(),
+                "android_answer" to null,
+                "android_candidates" to emptyList<String>(),
+                "updatedAt" to System.currentTimeMillis()
+            ),
+            SetOptions.merge()
+        )
+
+        signalingListener = signalRef.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, e ->
             if (e != null) {
                 Log.e(TAG, "Signaling Listen failed", e)
                 _connectionStatus.value = "Signaling Offline"
@@ -172,7 +171,9 @@ class WebRtcManager(private val context: Context) {
                 // Web Bridge will send 'offer' or 'answer'
                 val offer = data["web_offer"] as? String
                 val answer = data["web_answer"] as? String
-                val candidates = data["web_candidates"] as? List<String> ?: emptyList()
+                val candidates = (data["web_candidates"] as? List<*>)
+                    ?.filterIsInstance<String>()
+                    ?: emptyList()
 
                 if (offer != null && peerConnection?.remoteDescription == null) {
                     handleOffer(offer)
@@ -182,15 +183,32 @@ class WebRtcManager(private val context: Context) {
 
                 // Handle accumulated candidates
                 candidates.forEach { candStr ->
-                    handleRemoteCandidateString(candStr)
+                    if (processedRemoteCandidates.add(candStr)) {
+                        handleRemoteCandidateString(candStr)
+                    }
                 }
             }
         }
     }
-    */
 
     private fun sendIceCandidate(candidate: IceCandidate) {
-        Log.d(TAG, "Safe Mode: Skipping ICE candidate upload")
+        val peerId = _peerId.value ?: return
+        val signalRef = firestore.collection("signals").document(peerId)
+        val candJson = JSONObject().apply {
+            put("sdpMid", candidate.sdpMid)
+            put("sdpMLineIndex", candidate.sdpMLineIndex)
+            put("candidate", candidate.sdp)
+        }.toString()
+
+        signalRef.set(
+            mapOf(
+                "android_candidates" to FieldValue.arrayUnion(candJson),
+                "updatedAt" to System.currentTimeMillis()
+            ),
+            SetOptions.merge()
+        ).addOnFailureListener {
+            Log.e(TAG, "Failed to upload ICE candidate", it)
+        }
     }
 
     private fun handleOffer(sdpStr: String) {
@@ -200,9 +218,26 @@ class WebRtcManager(private val context: Context) {
             override fun onSetSuccess() {
                 peerConnection?.createAnswer(object : SdpObserver {
                     override fun onCreateSuccess(answer: SessionDescription) {
-                        peerConnection?.setLocalDescription(this, answer)
-                        val peerId = _peerId.value ?: return
-                        Log.d(TAG, "Safe Mode: Skipping local description upload")
+                        peerConnection?.setLocalDescription(object : SdpObserver {
+                            override fun onCreateSuccess(p0: SessionDescription?) {}
+                            override fun onSetSuccess() {
+                                val peerId = _peerId.value ?: return
+                                val signalRef = firestore.collection("signals").document(peerId)
+                                signalRef.set(
+                                    mapOf(
+                                        "android_answer" to answer.description,
+                                        "updatedAt" to System.currentTimeMillis()
+                                    ),
+                                    SetOptions.merge()
+                                ).addOnFailureListener {
+                                    Log.e(TAG, "Failed to upload answer SDP", it)
+                                }
+                            }
+                            override fun onCreateFailure(p0: String?) {}
+                            override fun onSetFailure(p0: String?) {
+                                Log.e(TAG, "Failed to set local description", Exception(p0))
+                            }
+                        }, answer)
                     }
                     override fun onSetSuccess() {}
                     override fun onCreateFailure(p0: String?) {}
@@ -241,15 +276,16 @@ class WebRtcManager(private val context: Context) {
     // Legacy WebSocket signaling removed for Firestore P2P focus
 
     fun stop() {
-        // signalingListener?.remove()
+        signalingListener?.remove()
         dataChannel?.close()
         peerConnection?.close()
         pcf?.dispose()
-        
-        // signalingListener = null
+
+        signalingListener = null
         dataChannel = null
         peerConnection = null
         pcf = null
+        processedRemoteCandidates.clear()
         
         _peerId.value = null
         _connectionStatus.value = "Disconnected"

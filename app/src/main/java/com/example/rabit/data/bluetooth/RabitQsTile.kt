@@ -1,7 +1,9 @@
 package com.example.rabit.data.bluetooth
 
 import android.annotation.SuppressLint
+import android.app.PendingIntent
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -96,7 +98,7 @@ class RabitQsTile : TileService() {
                 return false
             }
 
-            val adapter = BluetoothAdapter.getDefaultAdapter() ?: return false
+            val adapter = applicationContext.getSystemService(BluetoothManager::class.java)?.adapter ?: return false
             if (!adapter.isEnabled) {
                 Log.w(TAG, "Bluetooth is off")
                 return false
@@ -129,7 +131,18 @@ class RabitQsTile : TileService() {
         val intent = Intent(applicationContext, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        startActivityAndCollapse(intent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val pendingIntent = PendingIntent.getActivity(
+                applicationContext,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            startActivityAndCollapse(pendingIntent)
+        } else {
+            @Suppress("DEPRECATION")
+            startActivityAndCollapse(intent)
+        }
     }
 
     private fun updateTileState() {

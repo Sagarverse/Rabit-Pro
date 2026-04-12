@@ -3,6 +3,7 @@ package com.example.rabit.data.bluetooth
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
@@ -10,8 +11,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.Parcelable
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 class BluetoothScanner(private val context: Context) {
 
     private val bluetoothAdapter: BluetoothAdapter? = try {
-        BluetoothAdapter.getDefaultAdapter()
+        context.getSystemService(BluetoothManager::class.java)?.adapter
     } catch (e: Exception) {
         null
     }
@@ -38,11 +41,9 @@ class BluetoothScanner(private val context: Context) {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 BluetoothDevice.ACTION_FOUND -> {
-                    val device: BluetoothDevice? = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                    val device: BluetoothDevice? = intent.parcelableExtraCompat(BluetoothDevice.EXTRA_DEVICE)
                     device?.let {
-                        if (it.name != null) {
-                            _scannedDevices.value = _scannedDevices.value + it
-                        }
+                        _scannedDevices.value = _scannedDevices.value + it
                     }
                 }
                 BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
@@ -57,18 +58,14 @@ class BluetoothScanner(private val context: Context) {
             super.onScanResult(callbackType, result)
             result.device?.let { device ->
                 try {
-                    if (device.name != null) {
-                        _scannedDevices.value = _scannedDevices.value + device
-                    }
+                    _scannedDevices.value = _scannedDevices.value + device
                 } catch (e: SecurityException) { }
             }
         }
 
         override fun onBatchScanResults(results: MutableList<ScanResult>) {
             super.onBatchScanResults(results)
-            val devices = results.map { it.device }.filter { 
-                try { it.name != null } catch (e: SecurityException) { false } 
-            }
+            val devices = results.map { it.device }
             _scannedDevices.value = _scannedDevices.value + devices
         }
 
@@ -143,5 +140,14 @@ class BluetoothScanner(private val context: Context) {
 
         _isScanning.value = false
         handler.removeCallbacks(scanStopRunnable)
+    }
+
+    private inline fun <reified T : Parcelable> Intent.parcelableExtraCompat(key: String): T? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(key, T::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            getParcelableExtra(key) as? T
+        }
     }
 }

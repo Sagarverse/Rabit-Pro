@@ -23,11 +23,25 @@ class SecureStorage(private val context: Context) {
 
     fun getApiKey(): String? = prefs.getString(KEY_GEMINI_API, null)
 
+    fun saveUnlockPassword(password: String) {
+        prefs.edit().putString(KEY_UNLOCK_PASSWORD, password).apply()
+    }
+
+    fun getUnlockPassword(): String? = prefs.getString(KEY_UNLOCK_PASSWORD, null)
+
+    fun saveMacPassword(password: String) {
+        prefs.edit().putString(KEY_MAC_PASSWORD, password).apply()
+    }
+
+    fun getMacPassword(): String? = prefs.getString(KEY_MAC_PASSWORD, null)
+
     fun clearApiKey() {
         prefs.edit().remove(KEY_GEMINI_API).apply()
     }
 
     companion object {
         private const val KEY_GEMINI_API = "gemini_api_key"
+        private const val KEY_UNLOCK_PASSWORD = "unlock_password"
+        private const val KEY_MAC_PASSWORD = "mac_password"
     }
 }

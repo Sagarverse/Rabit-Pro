@@ -1,4 +1,4 @@
-package com.example.rabit
+package com.sagar.rabit
 
 import org.junit.Test
 

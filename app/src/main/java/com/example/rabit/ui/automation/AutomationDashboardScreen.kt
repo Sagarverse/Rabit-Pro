@@ -30,7 +30,9 @@ import com.example.rabit.ui.theme.*
 @Composable
 fun AutomationDashboardScreen(
     viewModel: MainViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToWakeOnLan: () -> Unit = {},
+    onNavigateToSshTerminal: () -> Unit = {}
 ) {
     val customMacros by viewModel.customMacros.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
@@ -45,6 +47,13 @@ fun AutomationDashboardScreen(
             contentPadding = PaddingValues(vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            item {
+                QuickToolPanel(
+                    onWakeOnLan = onNavigateToWakeOnLan,
+                    onSshTerminal = onNavigateToSshTerminal
+                )
+            }
+
             // ─── SYSTEM CORE ───
             item {
                 MacroCategory(
@@ -90,7 +99,9 @@ fun AutomationDashboardScreen(
                         MacroDefinition("Mission Ctrl", Icons.Default.GridView, AccentPurple, "MC_CMD"),
                         MacroDefinition("Switch App", Icons.Default.Tab, AccentPink, "SW_CMD"),
                         MacroDefinition("Hide Others", Icons.Default.VisibilityOff, AccentOrange, "HIDE_CMD"),
-                        MacroDefinition("Terminal", Icons.Default.Code, Platinum, "TERM_CMD")
+                        MacroDefinition("Terminal", Icons.Default.Code, Platinum, "TERM_CMD"),
+                        MacroDefinition("Open Safari", Icons.Default.Language, AccentBlue, "LAUNCH_SAFARI"),
+                        MacroDefinition("Open Spotify", Icons.Default.MusicNote, SuccessGreen, "LAUNCH_SPOTIFY")
                     ),
                     onMacroClick = { handleMacro(it.command, viewModel) }
                 )
@@ -179,6 +190,58 @@ fun AutomationDashboardScreen(
                 TextButton(onClick = { showAddDialog = false }) { Text("Cancel", color = Silver) }
             }
         )
+    }
+}
+
+@Composable
+private fun QuickToolPanel(
+    onWakeOnLan: () -> Unit,
+    onSshTerminal: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "POWER TOOLS",
+            color = Platinum.copy(alpha = 0.6f),
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            fontSize = 12.sp
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Surface(
+                onClick = onWakeOnLan,
+                color = SoftGrey.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.2f)),
+                modifier = Modifier.weight(1f).height(72.dp)
+            ) {
+                Row(modifier = Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.PowerSettingsNew, contentDescription = null, tint = AccentTeal)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("Wake-on-LAN", color = Platinum, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("Boot sleeping host", color = Silver, fontSize = 11.sp)
+                    }
+                }
+            }
+
+            Surface(
+                onClick = onSshTerminal,
+                color = SoftGrey.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.2f)),
+                modifier = Modifier.weight(1f).height(72.dp)
+            ) {
+                Row(modifier = Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Terminal, contentDescription = null, tint = AccentBlue)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("SSH Terminal", color = Platinum, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                        Text("Run shell commands", color = Silver, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -290,7 +353,7 @@ private fun handleMacro(command: String, viewModel: MainViewModel) {
         "LOCK_CMD" -> viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_CTRL, HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.KEY_Q))
         "SPOT_CMD" -> viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.KEY_SPACE))
         "SHOT_CMD" -> viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.MODIFIER_LEFT_SHIFT, HidKeyCodes.KEY_4))
-        "MUTE_CMD" -> viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.MODIFIER_LEFT_SHIFT, HidKeyCodes.KEY_A))
+        "MUTE_CMD" -> viewModel.sendSystemShortcut(MainViewModel.SystemShortcut.MUTE)
         "SLEEP_CMD" -> viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_ALT, HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.KEY_POWER))
         "INFO_CMD" -> {
              viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.KEY_SPACE))
@@ -308,11 +371,13 @@ private fun handleMacro(command: String, viewModel: MainViewModel) {
         "SW_CMD" -> viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.KEY_TAB))
         "HIDE_CMD" -> viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.MODIFIER_LEFT_ALT, HidKeyCodes.KEY_H))
         "TERM_CMD" -> viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_CTRL, HidKeyCodes.KEY_GRAVE))
-        "PLAY_CMD" -> viewModel.sendKey(HidKeyCodes.KEY_SPACE)
+        "PLAY_CMD" -> viewModel.sendSystemShortcut(MainViewModel.SystemShortcut.PLAY_PAUSE)
         "ZI_CMD" -> viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.KEY_EQUAL))
         "ZO_CMD" -> viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.KEY_MINUS))
         "RENDER_CMD" -> viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.KEY_R))
         "EXPORT_CMD" -> viewModel.sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.KEY_E))
+        "LAUNCH_SAFARI" -> viewModel.launchMacApp("Safari")
+        "LAUNCH_SPOTIFY" -> viewModel.launchMacApp("Spotify")
         else -> {
             if (command.contains("&&")) {
                 viewModel.sendMacro(command)

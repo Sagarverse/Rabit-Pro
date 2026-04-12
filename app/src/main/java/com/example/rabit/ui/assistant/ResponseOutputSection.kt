@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -220,7 +221,7 @@ fun GeminiResponseBox(response: GeminiResponse, viewModel: AssistantViewModel) {
                     // Speak
                     IconButton(onClick = { viewModel.speakText(response.text) }, modifier = Modifier.size(36.dp)) {
                         Icon(
-                            if (isSpeaking) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                            if (isSpeaking) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                             contentDescription = "Play Aloud",
                             tint = if (isSpeaking) AccentBlue else Silver,
                             modifier = Modifier.size(18.dp)
@@ -259,7 +260,7 @@ fun GeminiResponseBox(response: GeminiResponse, viewModel: AssistantViewModel) {
                         shape = RoundedCornerShape(10.dp),
                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                     ) {
-                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("PUSH", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }

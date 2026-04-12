@@ -9,6 +9,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,13 +28,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.provider.OpenableColumns
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.painterResource
-import com.example.rabit.R
+import com.sagar.rabit.R
 import com.example.rabit.data.network.RabitNetworkServer
 import com.example.rabit.ui.MainViewModel
 import com.example.rabit.ui.components.QrCodeGenerator
@@ -54,6 +57,7 @@ fun WebBridgeScreen(
     val p2pEnabled by viewModel.p2pEnabled.collectAsState("false".toBoolean())
     val peerId by viewModel.p2pPeerId.collectAsState(null)
     val p2pStatus by viewModel.p2pStatus.collectAsState("Disconnected")
+    val cloudUnavailable = p2pStatus.contains("Safe Mode") || p2pStatus.contains("Offline")
 
     // ActivityResultLauncher for picking files to share
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -115,6 +119,17 @@ fun WebBridgeScreen(
                 .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Platinum)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("WEB BRIDGE", color = Platinum, fontSize = 18.sp, fontWeight = FontWeight.Black)
+            }
+
             // Glassmorphism Status Card
             Surface(
                 modifier = Modifier
@@ -186,17 +201,34 @@ fun WebBridgeScreen(
                 val localUrl = if (localIp.isNotEmpty() && localIp != "0.0.0.0") 
                     "http://$localIp:8765" else "Identifying network..."
                 val gatewayBaseUrl = "https://zoom-sagar.web.app"
-                val p2pUrl = if (!peerId.isNullOrEmpty() && !p2pStatus.contains("Safe Mode")) "$gatewayBaseUrl/?peer=$peerId" else gatewayBaseUrl
+                val p2pUrl = if (!peerId.isNullOrEmpty() && !cloudUnavailable) "$gatewayBaseUrl/?peer=$peerId" else gatewayBaseUrl
                 
                 // Status indicator for P2P state
-                if (p2pStatus.contains("Safe Mode")) {
-                    Text(
-                        "Cloud Connectivity: Safe Mode (Local Only)",
-                        color = Silver.copy(alpha = 0.5f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
+                if (cloudUnavailable) {
+                    Surface(
+                        color = ErrorRed.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, ErrorRed.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CloudOff, contentDescription = null, tint = ErrorRed)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Cloud mode unavailable", color = Platinum, fontWeight = FontWeight.Bold)
+                                Text("Bridge is in local-only mode until cloud signaling is available.", color = Silver, fontSize = 11.sp)
+                            }
+                            Button(
+                                onClick = { viewModel.startP2PHosting() },
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                            ) {
+                                Text("SETUP CLOUD")
+                            }
+                        }
+                    }
                 }
                 
                 // Passcode Card (Premium Glass)
@@ -288,11 +320,21 @@ fun WebBridgeScreen(
                             Switch(
                                 checked = p2pEnabled,
                                 onCheckedChange = { if (it) viewModel.startP2PHosting() else viewModel.stopP2PHosting() },
+                                enabled = !cloudUnavailable,
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Platinum,
                                     checkedTrackColor = AccentBlue,
                                     uncheckedTrackColor = Graphite
                                 )
+                            )
+                        }
+
+                        if (cloudUnavailable) {
+                            Text(
+                                "P2P switch disabled while cloud is unavailable",
+                                color = Silver.copy(alpha = 0.7f),
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(top = 8.dp)
                             )
                         }
 
@@ -339,6 +381,24 @@ fun WebBridgeScreen(
                                         Text("TAP TO COPY PERSISTENT HUB LINK", color = Silver.copy(alpha = 0.5f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = SoftGrey.copy(alpha = 0.45f),
+                                    shape = RoundedCornerShape(20.dp),
+                                    border = BorderStroke(1.dp, BorderColor.copy(alpha = 0.3f))
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text("DIAGNOSTICS", color = Silver, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        DiagnosticRow("Bluetooth", if (cloudUnavailable) "Cloud fallback ready" else "Ready")
+                                        DiagnosticRow("Local IP", if (localIp == "0.0.0.0") "Unavailable" else localIp)
+                                        DiagnosticRow("P2P", p2pStatus)
+                                        DiagnosticRow("Permissions", "Granted for bridge features")
+                                    }
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(16.dp))
@@ -381,10 +441,7 @@ fun WebBridgeScreen(
                                     Text("${sharedFiles.size} items ready for Mac", color = Silver, fontSize = 11.sp)
                                 }
                             }
-                            IconButton(
-                                onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
-                                modifier = Modifier.background(AccentBlue.copy(alpha = 0.1f), CircleShape)
-                            ) {
+                            IconButton(onClick = { filePickerLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.background(AccentBlue.copy(alpha = 0.1f), CircleShape)) {
                                 Icon(Icons.Default.Add, null, tint = AccentBlue)
                             }
                         }
@@ -404,7 +461,7 @@ fun WebBridgeScreen(
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.InsertDriveFile, null, tint = Silver, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.AutoMirrored.Filled.InsertDriveFile, null, tint = Silver, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Text(fileName, color = Platinum, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                         IconButton(onClick = { viewModel.removeSharedFile(uri) }, modifier = Modifier.size(24.dp)) {
@@ -420,6 +477,17 @@ fun WebBridgeScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun DiagnosticRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, color = Silver, fontSize = 11.sp)
+        Text(value, color = Platinum, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 

@@ -20,7 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -217,7 +217,7 @@ fun ChatBubble(message: ChatMessage, viewModel: AssistantViewModel, mainViewMode
                             ) {
                                 // Listen
                                 ActionPill(
-                                    icon = if (isSpeaking) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                                    icon = if (isSpeaking) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
                                     label = if (isSpeaking) "Stop" else "Listen",
                                     tint = AccentTeal.copy(alpha = 0.8f),
                                     bgColor = AccentTeal.copy(alpha = 0.12f),

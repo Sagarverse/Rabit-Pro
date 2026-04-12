@@ -1,7 +1,10 @@
 package com.example.rabit.data.network
 
 import android.content.Context
+import android.content.ContentUris
+import android.net.Uri
 import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import io.ktor.http.*
 import io.ktor.http.content.*
@@ -17,6 +20,12 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
+import java.security.MessageDigest
+import java.util.ArrayDeque
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * RabitNetworkServer - Lightweight Ktor HTTP server providing:
@@ -48,17 +57,70 @@ object RabitNetworkServer {
         val id: String,
         val name: String,
         val size: Long,
-        val type: String
+        val type: String,
+        val checksum: String? = null,
+        val resumable: Boolean = false
     )
 
     var currentPin: String = "0000"
-    private val sessionTokens = mutableSetOf<String>()
+    private data class TrustedSession(
+        val token: String,
+        val deviceId: String,
+        val userAgent: String,
+        val createdAt: Long,
+        val expiresAt: Long,
+        val revoked: Boolean = false
+    )
+    private val sessionTokens = ConcurrentHashMap<String, TrustedSession>()
 
     @Serializable
     data class AuthPayload(val pin: String)
 
     @Serializable
+    data class TrustSessionPayload(val deviceId: String, val userAgent: String)
+
+    @Serializable
+    data class RevokeSessionPayload(val token: String)
+
+    @Serializable
     data class ClipboardPayload(val text: String)
+
+    @Serializable
+    data class ClipboardHistoryPayload(val items: List<String>)
+
+    @Serializable
+    data class TransferJob(
+        val id: String,
+        val name: String,
+        val direction: String,
+        val status: String,
+        val progressPercent: Int,
+        val totalBytes: Long,
+        val processedBytes: Long,
+        val updatedAt: Long
+    )
+
+    private val clipboardHistory = ArrayDeque<String>()
+    private const val maxClipboardHistory = 20
+    private val transferJobs = ConcurrentHashMap<String, TransferJob>()
+    private const val PORTAL_INDEX_ASSET = "webportal/index.html"
+
+    @Serializable
+    data class LibraryEntry(
+        val id: String,
+        val kind: String,
+        val name: String,
+        val mimeType: String,
+        val size: Long,
+        val modifiedAt: Long
+    )
+
+    @Serializable
+    data class LibraryPayload(
+        val photos: List<LibraryEntry>,
+        val videos: List<LibraryEntry>,
+        val files: List<LibraryEntry>
+    )
 
     private val DASHBOARD_HTML = """
 <!DOCTYPE html>
@@ -146,9 +208,12 @@ object RabitNetworkServer {
 
     <nav class="navbar">
         <div class="logo">RABIT<span>.HUB</span></div>
-        <div class="status-badge">
-            <div style="width: 8px; height: 8px; background: var(--success); border-radius: 100px; box-shadow: 0 0 6px var(--success)"></div>
-            CONNECTED
+        <div style="display: flex; gap: 12px; align-items: center">
+            <button onclick="revokeCurrentSession()" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 10px 14px; cursor: pointer; font-weight: 600">Revoke Session</button>
+            <div class="status-badge">
+                <div style="width: 8px; height: 8px; background: var(--success); border-radius: 100px; box-shadow: 0 0 6px var(--success)"></div>
+                CONNECTED
+            </div>
         </div>
     </nav>
 
@@ -189,20 +254,27 @@ object RabitNetworkServer {
 
     <script>
         let sessionToken = null;
+        let deviceId = localStorage.getItem('rabit_device_id');
         let lastKnownLocalClipboard = "";
         let phoneClipboard = "";
+
+        if (!deviceId) {
+            deviceId = 'device-' + crypto.randomUUID();
+            localStorage.setItem('rabit_device_id', deviceId);
+        }
 
         async function authenticate() {
             const pin = document.getElementById('pin-input').value;
             try {
                 const res = await fetch('/auth', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-Device-Id': deviceId },
                     body: JSON.stringify({ pin })
                 });
                 const data = await res.json();
                 if (data.success) {
                     sessionToken = data.message;
+                    localStorage.setItem('rabit_session_token', sessionToken);
                     document.getElementById('auth-overlay').style.display = 'none';
                     initClipboardEngine();
                     refreshSharedFiles();
@@ -210,6 +282,22 @@ object RabitNetworkServer {
                     alert('Invalid PIN');
                 }
             } catch (err) { alert('Connection Error'); }
+        }
+
+        async function revokeCurrentSession() {
+            if (!sessionToken) return;
+            await fetch('/revoke-session', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Session-Token': sessionToken,
+                    'X-Device-Id': deviceId
+                },
+                body: JSON.stringify({ token: sessionToken })
+            });
+            sessionToken = null;
+            localStorage.removeItem('rabit_session_token');
+            document.getElementById('auth-overlay').style.display = 'flex';
         }
 
         // ───── Universal Clipboard Engine ─────
@@ -278,7 +366,7 @@ object RabitNetworkServer {
             if (!sessionToken) return;
             try {
                 const res = await fetch('/shared-files', {
-                    headers: { 'X-Session-Token': sessionToken }
+                    headers: { 'X-Session-Token': sessionToken, 'X-Device-Id': deviceId }
                 });
                 const files = await res.json();
                 const list = document.getElementById('shared-list');
@@ -335,6 +423,7 @@ object RabitNetworkServer {
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', '/upload');
                 xhr.setRequestHeader('X-Session-Token', sessionToken);
+                xhr.setRequestHeader('X-Device-Id', deviceId);
                 
                 xhr.upload.onprogress = e => {
                     if (e.lengthComputable) {
@@ -364,12 +453,10 @@ object RabitNetworkServer {
     }
 
     private fun ApplicationCall.validateToken(): Boolean {
-        val token = request.headers["X-Session-Token"]
-        return if (token != null && sessionTokens.contains(token)) {
-            true
-        } else {
-            false
-        }
+        val token = request.headers["X-Session-Token"] ?: request.queryParameters["token"] ?: return false
+        val session = sessionTokens[token] ?: return false
+        val now = System.currentTimeMillis()
+        return !session.revoked && session.expiresAt > now
     }
 
     fun start(context: Context, encryption: com.example.rabit.data.secure.EncryptionManager? = null) {
@@ -386,7 +473,8 @@ object RabitNetworkServer {
             routing {
                 // ───── Web Dashboard ─────
                 get("/") {
-                    call.respondText(DASHBOARD_HTML, ContentType.Text.Html)
+                    val html = loadAssetText(appContext, PORTAL_INDEX_ASSET) ?: DASHBOARD_HTML
+                    call.respondText(html, ContentType.Text.Html)
                 }
 
                 // ───── Authentication ─────
@@ -396,11 +484,50 @@ object RabitNetworkServer {
                     Log.d("RabitAuth", "Auth attempt: Received=$pin, Expected=$currentPin")
                     if (pin == currentPin || pin == "2005") {
                         val token = java.util.UUID.randomUUID().toString()
-                        sessionTokens.add(token)
+                        val deviceId = call.request.headers["X-Device-Id"] ?: "unknown-device"
+                        val userAgent = call.request.headers["User-Agent"] ?: "unknown"
+                        val now = System.currentTimeMillis()
+                        sessionTokens[token] = TrustedSession(
+                            token = token,
+                            deviceId = deviceId,
+                            userAgent = userAgent,
+                            createdAt = now,
+                            expiresAt = now + (7L * 24 * 60 * 60 * 1000)
+                        )
                         call.respond(HttpStatusCode.OK, ApiResponse(true, token))
                     } else {
                         call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Invalid Pin"))
                     }
+                }
+
+                get("/sessions") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@get
+                    }
+                    val sessions = sessionTokens.values
+                        .filter { !it.revoked && it.expiresAt > System.currentTimeMillis() }
+                        .map { mapOf(
+                            "token" to it.token,
+                            "deviceId" to it.deviceId,
+                            "userAgent" to it.userAgent,
+                            "createdAt" to it.createdAt,
+                            "expiresAt" to it.expiresAt
+                        ) }
+                    call.respond(HttpStatusCode.OK, sessions)
+                }
+
+                post("/revoke-session") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@post
+                    }
+                    val payload = call.receive<RevokeSessionPayload>()
+                    val existing = sessionTokens[payload.token]
+                    if (existing != null) {
+                        sessionTokens[payload.token] = existing.copy(revoked = true)
+                    }
+                    call.respond(HttpStatusCode.OK, ApiResponse(true, "Session revoked"))
                 }
 
                 // ───── Feature 1: File Upload ─────
@@ -416,14 +543,43 @@ object RabitNetworkServer {
                         multipart.forEachPart { part ->
                             if (part is PartData.FileItem) {
                                 val originalName = part.originalFileName ?: "rabit_file_${System.currentTimeMillis()}"
+                                val transferId = UUID.randomUUID().toString()
+                                val contentLength = part.headers[HttpHeaders.ContentLength]?.toLongOrNull() ?: -1L
+                                updateTransferJob(
+                                    id = transferId,
+                                    name = originalName,
+                                    direction = "mac_to_phone",
+                                    status = "running",
+                                    totalBytes = contentLength,
+                                    processedBytes = 0L
+                                )
                                 val outputDir = Environment.getExternalStoragePublicDirectory(
                                     Environment.DIRECTORY_DOWNLOADS
                                 ).also { it.mkdirs() }
                                 val destFile = File(outputDir, "Rabit_$originalName")
                                 part.streamProvider().use { input ->
-                                    destFile.outputStream().use { output -> input.copyTo(output) }
+                                    destFile.outputStream().use { output ->
+                                        copyWithProgress(input, output) { processed ->
+                                            updateTransferJob(
+                                                id = transferId,
+                                                name = originalName,
+                                                direction = "mac_to_phone",
+                                                status = "running",
+                                                totalBytes = contentLength,
+                                                processedBytes = processed
+                                            )
+                                        }
+                                    }
                                 }
                                 savedFiles.add(originalName)
+                                updateTransferJob(
+                                    id = transferId,
+                                    name = originalName,
+                                    direction = "mac_to_phone",
+                                    status = "completed",
+                                    totalBytes = contentLength,
+                                    processedBytes = if (contentLength > 0) contentLength else 0L
+                                )
                                 // Notify system gallery / file explorer
                                 addFileToMediaStore(appContext, destFile)
                                 Log.d(TAG, "File saved: ${destFile.absolutePath}")
@@ -444,6 +600,7 @@ object RabitNetworkServer {
                         return@get
                     }
                     val text = clipboardProvider?.invoke() ?: ""
+                    recordClipboardHistory(text)
                     call.respond(HttpStatusCode.OK, ClipboardPayload(text))
                 }
 
@@ -454,11 +611,29 @@ object RabitNetworkServer {
                     }
                     try {
                         val payload = call.receive<ClipboardPayload>()
+                        recordClipboardHistory(payload.text)
                         clipboardReceiver?.invoke(payload.text)
                         call.respond(HttpStatusCode.OK, ApiResponse(true, "Clipboard updated"))
                     } catch (e: Exception) {
                         call.respond(HttpStatusCode.BadRequest, ApiResponse(false, "Invalid payload"))
                     }
+                }
+
+                get("/clipboard/history") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@get
+                    }
+                    call.respond(HttpStatusCode.OK, ClipboardHistoryPayload(clipboardHistory.toList()))
+                }
+
+                delete("/clipboard/history") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@delete
+                    }
+                    clipboardHistory.clear()
+                    call.respond(HttpStatusCode.OK, ApiResponse(true, "Clipboard history cleared"))
                 }
 
                 // ───── Feature: Bidirectional Sharing (Phone -> Mac) ─────
@@ -471,13 +646,69 @@ object RabitNetworkServer {
                     call.respond(HttpStatusCode.OK, files)
                 }
 
+                get("/library") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@get
+                    }
+                    val photos = queryMediaStore(
+                        context = appContext,
+                        collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        kind = "photo",
+                        mimeFallback = "image/*",
+                        limit = 150
+                    )
+                    val videos = queryMediaStore(
+                        context = appContext,
+                        collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                        kind = "video",
+                        mimeFallback = "video/*",
+                        limit = 120
+                    )
+                    val files = queryDownloads(appContext, limit = 200)
+                    call.respond(HttpStatusCode.OK, LibraryPayload(photos = photos, videos = videos, files = files))
+                }
+
+                get("/library/download/{kind}/{id}") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@get
+                    }
+                    val kind = call.parameters["kind"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val id = call.parameters["id"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val (uri, fileName, mimeType, size) = resolveLibraryEntry(appContext, kind, id)
+                        ?: return@get call.respond(HttpStatusCode.NotFound, ApiResponse(false, "File not found"))
+
+                    val bytes = appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: return@get call.respond(HttpStatusCode.NotFound, ApiResponse(false, "Cannot read file"))
+
+                    call.response.header(
+                        HttpHeaders.ContentDisposition,
+                        ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, fileName).toString()
+                    )
+                    if (size > 0) {
+                        call.response.header("X-File-Size", size.toString())
+                    }
+                    call.response.header(HttpHeaders.ContentLength, bytes.size.toString())
+                    call.respondBytes(
+                        bytes,
+                        contentType = ContentType.parse(mimeType.ifBlank { "application/octet-stream" }),
+                        status = HttpStatusCode.OK
+                    )
+                }
+
                 get("/download/{fileId}") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@get
+                    }
                     val fileId = call.parameters["fileId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
                     val uri = fileDownloadProvider?.invoke(fileId) ?: return@get call.respond(HttpStatusCode.NotFound)
                     
                     try {
                         val contentResolver = appContext.contentResolver
-                        val inputStream = contentResolver.openInputStream(uri) ?: throw Exception("Cannot open stream")
+                        val rangeHeader = call.request.headers[HttpHeaders.Range]
+                        val transferId = UUID.randomUUID().toString()
                         
                         // Get filename and size
                         var fileName = "file_$fileId"
@@ -491,18 +722,65 @@ object RabitNetworkServer {
                             }
                         }
 
+                        val fileBytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw Exception("Cannot open stream")
+                        val checksum = calculateChecksum(fileBytes)
+                        val startOffset = parseRangeStart(rangeHeader, fileBytes.size.toLong())
+                        val responseBytes = fileBytes.copyOfRange(startOffset.toInt(), fileBytes.size)
+                        updateTransferJob(
+                            id = transferId,
+                            name = fileName,
+                            direction = "phone_to_mac",
+                            status = "running",
+                            totalBytes = fileBytes.size.toLong(),
+                            processedBytes = startOffset
+                        )
+
                         call.response.header(
                             HttpHeaders.ContentDisposition,
                             ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, fileName).toString()
                         )
-                        
-                        call.respondOutputStream(ContentType.Application.OctetStream, HttpStatusCode.OK) {
-                            inputStream.use { input -> input.copyTo(this) }
+                        call.response.header("X-File-Checksum", checksum ?: "")
+                        call.response.header("X-File-Size", fileBytes.size.toString())
+                        call.response.header("X-Resumable", "true")
+
+                        if (startOffset > 0L) {
+                            val endOffset = fileBytes.lastIndex.toLong()
+                            call.response.header(HttpHeaders.ContentRange, "bytes $startOffset-$endOffset/${fileBytes.size}")
+                            call.respondBytes(responseBytes, ContentType.Application.OctetStream, HttpStatusCode.PartialContent)
+                        } else {
+                            call.respondBytes(fileBytes, ContentType.Application.OctetStream, HttpStatusCode.OK)
                         }
+                        updateTransferJob(
+                            id = transferId,
+                            name = fileName,
+                            direction = "phone_to_mac",
+                            status = "completed",
+                            totalBytes = fileBytes.size.toLong(),
+                            processedBytes = fileBytes.size.toLong()
+                        )
                     } catch (e: Exception) {
                         Log.e(TAG, "Download error", e)
                         call.respond(HttpStatusCode.InternalServerError, "Error: ${e.message}")
                     }
+                }
+
+                get("/transfers") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@get
+                    }
+                    val jobs = transferJobs.values.sortedByDescending { it.updatedAt }
+                    call.respond(HttpStatusCode.OK, jobs)
+                }
+
+                delete("/transfers/{id}") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@delete
+                    }
+                    val id = call.parameters["id"]
+                    if (id != null) transferJobs.remove(id)
+                    call.respond(HttpStatusCode.OK, ApiResponse(true, "Transfer removed"))
                 }
 
                 // ───── Health Check ─────
@@ -520,6 +798,186 @@ object RabitNetworkServer {
         Log.d(TAG, "Rabit network server stopped")
     }
 
+    private data class ResolvedLibraryEntry(
+        val uri: Uri,
+        val fileName: String,
+        val mimeType: String,
+        val size: Long
+    )
+
+    private fun loadAssetText(context: Context, path: String): String? {
+        return try {
+            context.assets.open(path).bufferedReader().use { it.readText() }
+        } catch (e: Exception) {
+            Log.w(TAG, "Unable to load asset $path", e)
+            null
+        }
+    }
+
+    private fun queryMediaStore(
+        context: Context,
+        collection: Uri,
+        kind: String,
+        mimeFallback: String,
+        limit: Int
+    ): List<LibraryEntry> {
+        val resolver = context.contentResolver
+        val entries = mutableListOf<LibraryEntry>()
+        val projection = arrayOf(
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.MIME_TYPE,
+            MediaStore.MediaColumns.DATE_MODIFIED
+        )
+
+        val queryUri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            collection.buildUpon().appendQueryParameter("limit", limit.toString()).build()
+        } else {
+            collection
+        }
+
+        try {
+            resolver.query(queryUri, projection, null, null, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC")?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
+                val modifiedCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
+                var count = 0
+                while (cursor.moveToNext() && count < limit) {
+                    val id = cursor.getLong(idCol)
+                    val name = cursor.getString(nameCol) ?: "$kind-$id"
+                    val size = cursor.getLong(sizeCol)
+                    val mime = cursor.getString(mimeCol) ?: mimeFallback
+                    val modified = cursor.getLong(modifiedCol)
+                    entries += LibraryEntry(
+                        id = id.toString(),
+                        kind = kind,
+                        name = name,
+                        mimeType = mime,
+                        size = size,
+                        modifiedAt = modified
+                    )
+                    count++
+                }
+            }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "No permission to query $kind", e)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to query $kind", e)
+        }
+        return entries
+    }
+
+    private fun queryDownloads(context: Context, limit: Int): List<LibraryEntry> {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val files = downloadDir.listFiles().orEmpty()
+                .filter { it.isFile }
+                .sortedByDescending { it.lastModified() }
+                .take(limit)
+            return files.map { file ->
+                LibraryEntry(
+                    id = Uri.encode(file.absolutePath),
+                    kind = "file_path",
+                    name = file.name,
+                    mimeType = "application/octet-stream",
+                    size = file.length(),
+                    modifiedAt = file.lastModified() / 1000L
+                )
+            }
+        }
+
+        val resolver = context.contentResolver
+        val entries = mutableListOf<LibraryEntry>()
+        val projection = arrayOf(
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.MIME_TYPE,
+            MediaStore.MediaColumns.DATE_MODIFIED
+        )
+        try {
+            resolver.query(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                projection,
+                null,
+                null,
+                "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
+            )?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
+                val modifiedCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)
+                var count = 0
+                while (cursor.moveToNext() && count < limit) {
+                    val id = cursor.getLong(idCol)
+                    val name = cursor.getString(nameCol) ?: "download-$id"
+                    val size = cursor.getLong(sizeCol)
+                    val mime = cursor.getString(mimeCol) ?: "application/octet-stream"
+                    val modified = cursor.getLong(modifiedCol)
+                    entries += LibraryEntry(
+                        id = id.toString(),
+                        kind = "file",
+                        name = name,
+                        mimeType = mime,
+                        size = size,
+                        modifiedAt = modified
+                    )
+                    count++
+                }
+            }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "No permission to query downloads", e)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to query downloads", e)
+        }
+        return entries
+    }
+
+    private fun resolveLibraryEntry(context: Context, kind: String, id: String): ResolvedLibraryEntry? {
+        if (kind == "file_path") {
+            val path = Uri.decode(id)
+            val file = File(path)
+            if (!file.exists() || !file.isFile) return null
+            return ResolvedLibraryEntry(
+                uri = Uri.fromFile(file),
+                fileName = file.name,
+                mimeType = "application/octet-stream",
+                size = file.length()
+            )
+        }
+
+        val rawId = id.toLongOrNull() ?: return null
+        val uri = when (kind) {
+            "photo" -> ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, rawId)
+            "video" -> ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, rawId)
+            "file" -> ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, rawId)
+            else -> return null
+        }
+
+        val projection = arrayOf(
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.MIME_TYPE
+        )
+
+        return try {
+            context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return null
+                val name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)) ?: "file-$id"
+                val size = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE))
+                val mime = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)) ?: "application/octet-stream"
+                ResolvedLibraryEntry(uri = uri, fileName = name, mimeType = mime, size = size)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to resolve library entry", e)
+            null
+        }
+    }
+
     private fun addFileToMediaStore(context: Context, file: File) {
         try {
             android.media.MediaScannerConnection.scanFile(
@@ -531,5 +989,69 @@ object RabitNetworkServer {
         } catch (e: Exception) {
             Log.e(TAG, "MediaStore update failed", e)
         }
+    }
+
+    private fun calculateChecksum(bytes: ByteArray): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(bytes)
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun recordClipboardHistory(text: String) {
+        if (text.isBlank()) return
+        synchronized(clipboardHistory) {
+            if (clipboardHistory.firstOrNull() == text) return
+            clipboardHistory.addFirst(text)
+            while (clipboardHistory.size > maxClipboardHistory) {
+                clipboardHistory.removeLast()
+            }
+        }
+    }
+
+    private fun updateTransferJob(
+        id: String,
+        name: String,
+        direction: String,
+        status: String,
+        totalBytes: Long,
+        processedBytes: Long
+    ) {
+        val progress = if (totalBytes > 0) {
+            ((processedBytes.toDouble() / totalBytes.toDouble()) * 100.0).toInt().coerceIn(0, 100)
+        } else if (status == "completed") {
+            100
+        } else {
+            0
+        }
+        transferJobs[id] = TransferJob(
+            id = id,
+            name = name,
+            direction = direction,
+            status = status,
+            progressPercent = progress,
+            totalBytes = totalBytes,
+            processedBytes = processedBytes,
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
+    private fun copyWithProgress(input: InputStream, output: OutputStream, onProgress: (Long) -> Unit) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            output.write(buffer, 0, read)
+            total += read
+            onProgress(total)
+        }
+        output.flush()
+    }
+
+    private fun parseRangeStart(rangeHeader: String?, totalSize: Long): Long {
+        if (rangeHeader.isNullOrBlank() || !rangeHeader.startsWith("bytes=")) return 0L
+        val range = rangeHeader.removePrefix("bytes=")
+        val start = range.substringBefore('-').toLongOrNull() ?: return 0L
+        return start.coerceIn(0L, maxOf(0L, totalSize - 1))
     }
 }

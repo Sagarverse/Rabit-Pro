@@ -2,7 +2,9 @@ package com.example.rabit.ui.settings
 
 import android.widget.Toast
 import android.content.Intent
+import android.content.Context
 import android.net.Uri
+import android.bluetooth.BluetoothManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -53,12 +56,18 @@ fun SettingsScreen(
     )
     
     val autoReconnect by viewModel.autoReconnectEnabled.collectAsState()
-    val password by viewModel.unlockPassword.collectAsState()
+    val password by viewModel.macPassword.collectAsState()
     val typingSpeed by viewModel.typingSpeed.collectAsState()
     val notificationSync by viewModel.notificationSyncEnabled.collectAsState()
     val autoPush by viewModel.autoPushEnabled.collectAsState()
     val vibrationEnabled by viewModel.vibrationEnabled.collectAsState()
     val trackpadSensitivity by viewModel.trackpadSensitivity.collectAsState()
+    val proximityAutoUnlockEnabled by viewModel.proximityAutoUnlockEnabled.collectAsState()
+    val proximityNearRssi by viewModel.proximityNearRssi.collectAsState()
+    val proximityFarRssi by viewModel.proximityFarRssi.collectAsState()
+    val proximityCooldownSec by viewModel.proximityCooldownSec.collectAsState()
+    val proximityRequirePhoneUnlock by viewModel.proximityRequirePhoneUnlock.collectAsState()
+    val proximityTargetAddress by viewModel.proximityTargetAddress.collectAsState()
     
     val prefs = remember { context.getSharedPreferences("rabit_prefs", android.content.Context.MODE_PRIVATE) }
 
@@ -71,8 +80,16 @@ fun SettingsScreen(
 
     var showPasswordDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
+    var showProximityCalibrationDialog by remember { mutableStateOf(false) }
+    var showProximityTargetDialog by remember { mutableStateOf(false) }
+    var showSimpleSetupDialog by remember { mutableStateOf(false) }
     var showQrDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
+
+    val bondedDevices = remember {
+        val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        try { manager.adapter?.bondedDevices?.toList().orEmpty() } catch (e: Exception) { emptyList() }
+    }
 
     Scaffold(
         containerColor = Obsidian
@@ -243,6 +260,48 @@ fun SettingsScreen(
             // ─── Automation ───
             PremiumSectionHeader("SMART AUTOMATION")
             PremiumGlassCard {
+                SettingsClickItem(
+                    title = "Easy Setup Wizard",
+                    subtitle = "Recommended one-tap setup for most users",
+                    icon = Icons.Default.AutoFixHigh,
+                    iconColor = AccentTeal,
+                    onClick = { showSimpleSetupDialog = true }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsToggleItem(
+                    title = "Proximity Auto-Unlock",
+                    subtitle = "Auto-connect and unlock Mac when you get near",
+                    icon = Icons.AutoMirrored.Filled.BluetoothSearching,
+                    iconColor = AccentBlue,
+                    checked = proximityAutoUnlockEnabled,
+                    onCheckedChange = { viewModel.setProximityAutoUnlockEnabled(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsClickItem(
+                    title = "Proximity Calibration",
+                    subtitle = "Near ${proximityNearRssi} dBm • Far ${proximityFarRssi} dBm • Cooldown ${proximityCooldownSec}s",
+                    icon = Icons.Default.Tune,
+                    iconColor = AccentPurple,
+                    onClick = { showProximityCalibrationDialog = true }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsClickItem(
+                    title = "Proximity Target Device",
+                    subtitle = if (proximityTargetAddress.isBlank()) "Auto-detect from saved hosts" else proximityTargetAddress,
+                    icon = Icons.Default.Devices,
+                    iconColor = AccentTeal,
+                    onClick = { showProximityTargetDialog = true }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsToggleItem(
+                    title = "Require Phone Unlock",
+                    subtitle = "Do not auto-type Mac password while phone is locked",
+                    icon = Icons.Default.Security,
+                    iconColor = SuccessGreen,
+                    checked = proximityRequirePhoneUnlock,
+                    onCheckedChange = { viewModel.setProximityRequirePhoneUnlock(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
                 SettingsToggleItem(
                     title = "Do Not Disturb on Connect",
                     subtitle = "Silence phone when Mac is connected",
@@ -264,6 +323,28 @@ fun SettingsScreen(
                     onCheckedChange = {
                         wakeLockOnConnect = it
                         prefs.edit().putBoolean("auto_wake_lock_on_connect", it).apply()
+                    }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsClickItem(
+                    title = "Quick Test: Lock Screen",
+                    subtitle = "Test automation response immediately",
+                    icon = Icons.Default.Lock,
+                    iconColor = AccentPink,
+                    onClick = {
+                        viewModel.sendSystemShortcut(MainViewModel.SystemShortcut.LOCK_SCREEN)
+                        Toast.makeText(context, "Sent lock command", Toast.LENGTH_SHORT).show()
+                    }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsClickItem(
+                    title = "Quick Test: Open Safari",
+                    subtitle = "Checks app launch over Bluetooth",
+                    icon = Icons.Default.Language,
+                    iconColor = AccentBlue,
+                    onClick = {
+                        viewModel.launchMacApp("Safari")
+                        Toast.makeText(context, "Launching Safari on Mac", Toast.LENGTH_SHORT).show()
                     }
                 )
             }
@@ -318,6 +399,40 @@ fun SettingsScreen(
 
     // ─── Dialogs ───
 
+    if (showSimpleSetupDialog) {
+        AlertDialog(
+            onDismissRequest = { showSimpleSetupDialog = false },
+            containerColor = Graphite,
+            title = { Text("Easy Setup Wizard", color = Platinum) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Apply recommended settings for reliable day-to-day use.", color = Silver)
+                    Text("• Enable Auto-Reconnect", color = Silver, fontSize = 12.sp)
+                    Text("• Enable Proximity Auto-Unlock", color = Silver, fontSize = 12.sp)
+                    Text("• Require Phone Unlock for safety", color = Silver, fontSize = 12.sp)
+                    Text("• Enable Do Not Disturb on connect", color = Silver, fontSize = 12.sp)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.setAutoReconnectEnabled(true)
+                        viewModel.setProximityAutoUnlockEnabled(true)
+                        viewModel.setProximityRequirePhoneUnlock(true)
+                        dndOnConnect = true
+                        prefs.edit().putBoolean("auto_dnd_on_connect", true).apply()
+                        showSimpleSetupDialog = false
+                        Toast.makeText(context, "Easy setup applied", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                ) { Text("Apply") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSimpleSetupDialog = false }) { Text("Cancel", color = Silver) }
+            }
+        )
+    }
+
     if (showPasswordDialog) {
         var tempPass by remember { mutableStateOf(password) }
         AlertDialog(
@@ -334,7 +449,7 @@ fun SettingsScreen(
                 )
             },
             confirmButton = {
-                Button(onClick = { viewModel.setUnlockPassword(tempPass); showPasswordDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) { Text("Save") }
+                Button(onClick = { viewModel.setMacPassword(tempPass); showPasswordDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) { Text("Save") }
             },
             dismissButton = { TextButton(onClick = { showPasswordDialog = false }) { Text("Cancel", color = Silver) } }
         )
@@ -360,6 +475,110 @@ fun SettingsScreen(
                 }
             },
             confirmButton = { TextButton(onClick = { showSpeedDialog = false }) { Text("Cancel", color = Silver) } }
+        )
+    }
+
+    if (showProximityCalibrationDialog) {
+        var near by remember { mutableStateOf(proximityNearRssi.toFloat()) }
+        var far by remember { mutableStateOf(proximityFarRssi.toFloat()) }
+        var cooldown by remember { mutableStateOf(proximityCooldownSec.toFloat()) }
+        AlertDialog(
+            onDismissRequest = { showProximityCalibrationDialog = false },
+            containerColor = Graphite,
+            title = { Text("Proximity Calibration", color = Platinum) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Near Trigger: ${near.toInt()} dBm", color = Silver, fontSize = 12.sp)
+                    Slider(
+                        value = near,
+                        onValueChange = { near = it },
+                        valueRange = -90f..-45f,
+                        colors = SliderDefaults.colors(thumbColor = AccentBlue, activeTrackColor = AccentBlue)
+                    )
+                    Text("Far Trigger: ${far.toInt()} dBm", color = Silver, fontSize = 12.sp)
+                    Slider(
+                        value = far,
+                        onValueChange = { far = it },
+                        valueRange = -100f..-55f,
+                        colors = SliderDefaults.colors(thumbColor = AccentPurple, activeTrackColor = AccentPurple)
+                    )
+                    Text("Cooldown: ${cooldown.toInt()} sec", color = Silver, fontSize = 12.sp)
+                    Slider(
+                        value = cooldown,
+                        onValueChange = { cooldown = it },
+                        valueRange = 3f..60f,
+                        colors = SliderDefaults.colors(thumbColor = AccentTeal, activeTrackColor = AccentTeal)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.setProximityNearRssi(near.toInt())
+                        viewModel.setProximityFarRssi(far.toInt())
+                        viewModel.setProximityCooldownSec(cooldown.toInt())
+                        showProximityCalibrationDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showProximityCalibrationDialog = false }) { Text("Cancel", color = Silver) }
+            }
+        )
+    }
+
+    if (showProximityTargetDialog) {
+        AlertDialog(
+            onDismissRequest = { showProximityTargetDialog = false },
+            containerColor = Graphite,
+            title = { Text("Select Proximity Target", color = Platinum) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.setProximityTargetAddress("") }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = proximityTargetAddress.isBlank(),
+                            onClick = { viewModel.setProximityTargetAddress("") },
+                            colors = RadioButtonDefaults.colors(selectedColor = AccentBlue)
+                        )
+                        Text("Auto-select from saved devices", color = Platinum)
+                    }
+
+                    bondedDevices.forEach { device ->
+                        val address = device.address ?: return@forEach
+                        val name = runCatching { device.name }.getOrDefault(null) ?: "Unknown Device"
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.setProximityTargetAddress(address) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = proximityTargetAddress == address,
+                                onClick = { viewModel.setProximityTargetAddress(address) },
+                                colors = RadioButtonDefaults.colors(selectedColor = AccentBlue)
+                            )
+                            Column {
+                                Text(name, color = Platinum)
+                                Text(address, color = Silver, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showProximityTargetDialog = false }) { Text("Done", color = AccentBlue) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showProximityTargetDialog = false }) { Text("Cancel", color = Silver) }
+            }
         )
     }
 

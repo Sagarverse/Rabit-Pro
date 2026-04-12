@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -58,7 +59,7 @@ fun SnippetsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Default.TextSnippet,
+                        Icons.AutoMirrored.Filled.TextSnippet,
                         contentDescription = null,
                         tint = Silver.copy(alpha = 0.2f),
                         modifier = Modifier.size(64.dp)
@@ -208,7 +209,7 @@ fun SnippetCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     Icon(
-                        Icons.Default.TextSnippet,
+                        Icons.AutoMirrored.Filled.TextSnippet,
                         contentDescription = null,
                         tint = AccentGold,
                         modifier = Modifier.size(20.dp)
@@ -265,7 +266,7 @@ fun SnippetCard(
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                     ) {
-                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Push to Mac", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }

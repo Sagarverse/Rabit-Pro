@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rabit Browser Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-a: #071026;
+      --bg-b: #111827;
+      --card: rgba(255, 255, 255, 0.08);
+      --card-2: rgba(255, 255, 255, 0.05);
+      --border: rgba(255, 255, 255, 0.18);
+      --txt: #ecf2ff;
+      --muted: #9cb1d7;
+      --accent: #1fb6ff;
+      --accent-2: #24f1c7;
+      --ok: #22c55e;
+      --danger: #fb7185;
+      --shadow: 0 14px 42px rgba(0, 0, 0, 0.34);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      color: var(--txt);
+      background:
+        radial-gradient(1000px 480px at 90% -20%, rgba(31, 182, 255, 0.2), transparent),
+        radial-gradient(900px 440px at -10% 120%, rgba(36, 241, 199, 0.14), transparent),
+        linear-gradient(135deg, var(--bg-a), var(--bg-b));
+    }
+
+    .mesh {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.24;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: radial-gradient(circle at center, black 45%, transparent 100%);
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--border);
+      background: rgba(7, 16, 38, 0.6);
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      font-size: 20px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--ok);
+      box-shadow: 0 0 12px var(--ok);
+      animation: pulse 1.8s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(0.7); opacity: 0.5; }
+    }
+
+    .chip {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--txt);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .container {
+      max-width: 1300px;
+      margin: 20px auto;
+      padding: 0 16px 24px;
+      display: grid;
+      grid-template-columns: 1.1fr 1.4fr;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card-head {
+      padding: 16px 16px 0;
+    }
+
+    .title {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .body {
+      padding: 16px;
+    }
+
+    .drop {
+      border: 2px dashed rgba(31, 182, 255, 0.35);
+      border-radius: 16px;
+      min-height: 230px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      background: linear-gradient(180deg, rgba(31, 182, 255, 0.08), rgba(31, 182, 255, 0.02));
+      transition: all 220ms ease;
+      cursor: pointer;
+      padding: 14px;
+    }
+
+    .drop.active {
+      transform: translateY(-2px) scale(0.99);
+      border-color: var(--accent-2);
+      box-shadow: 0 0 0 6px rgba(36, 241, 199, 0.11);
+    }
+
+    .progress {
+      margin-top: 10px;
+      height: 9px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.13);
+      overflow: hidden;
+      display: none;
+    }
+
+    .bar {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      transition: width 120ms linear;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .tab {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border);
+      color: var(--txt);
+      border-radius: 999px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .tab.active {
+      background: linear-gradient(90deg, rgba(31, 182, 255, 0.22), rgba(36, 241, 199, 0.22));
+      border-color: rgba(36, 241, 199, 0.45);
+    }
+
+    .list {
+      max-height: 64vh;
+      overflow: auto;
+      display: grid;
+      gap: 10px;
+      padding-right: 4px;
+    }
+
+    .item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      border: 1px solid var(--border);
+      background: var(--card-2);
+      border-radius: 14px;
+      padding: 12px;
+      animation: rise 340ms ease;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .name {
+      font-size: 14px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .btn {
+      border: 1px solid var(--border);
+      background: linear-gradient(90deg, rgba(31, 182, 255, 0.25), rgba(36, 241, 199, 0.25));
+      color: white;
+      font-weight: 700;
+      padding: 9px 12px;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+
+    .muted { color: var(--muted); }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(6, 10, 26, 0.78);
+      display: grid;
+      place-items: center;
+      z-index: 50;
+    }
+
+    .auth {
+      width: min(420px, calc(100vw - 24px));
+      padding: 22px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: rgba(17, 24, 39, 0.95);
+      box-shadow: var(--shadow);
+    }
+
+    .auth input {
+      margin-top: 10px;
+      width: 100%;
+      height: 52px;
+      border-radius: 12px;
+      outline: none;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--txt);
+      font-size: 22px;
+      text-align: center;
+      letter-spacing: 8px;
+    }
+
+    .auth button {
+      margin-top: 12px;
+      width: 100%;
+      height: 52px;
+      border-radius: 12px;
+      border: 0;
+      font-weight: 700;
+      color: white;
+      cursor: pointer;
+      background: linear-gradient(90deg, #1fb6ff, #24f1c7);
+    }
+
+    @media (max-width: 980px) {
+      .container { grid-template-columns: 1fr; }
+      .list { max-height: 52vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="mesh"></div>
+
+  <div id="auth-overlay" class="overlay">
+    <div class="auth">
+      <h2 style="margin:0">Rabit Browser Portal</h2>
+      <p class="muted" style="margin-top:8px">Enter the 4-digit PIN shown in your Rabit app.</p>
+      <input id="pin" maxlength="4" inputmode="numeric" autocomplete="one-time-code" type="password" placeholder="0000" />
+      <button id="auth-btn">Connect</button>
+      <p id="auth-error" style="display:none;color:var(--danger);margin:10px 0 0">Invalid PIN or connection failed.</p>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Rabit Browser Portal</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button id="refresh-btn" class="chip">Refresh</button>
+      <button id="revoke-btn" class="chip">Disconnect</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="card-head">
+        <h3 class="title">Upload From Computer</h3>
+        <p class="subtitle">Drag and drop files. They are saved to your phone Downloads folder.</p>
+      </div>
+      <div class="body">
+        <div id="drop-zone" class="drop">
+          <div>
+            <div style="font-size:36px">⬆</div>
+            <div style="font-size:16px;font-weight:700;margin-top:8px">Drop files here</div>
+            <div class="muted" style="font-size:13px;margin-top:4px">or click to choose files</div>
+          </div>
+          <input id="pick" type="file" multiple hidden />
+        </div>
+        <div id="progress" class="progress"><div id="bar" class="bar"></div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h3 class="title">Browse Phone Library</h3>
+        <p class="subtitle">Photos, videos, and files from your Android device.</p>
+      </div>
+      <div class="body">
+        <div class="tabs">
+          <button class="tab active" data-tab="photos">Photos</button>
+          <button class="tab" data-tab="videos">Videos</button>
+          <button class="tab" data-tab="files">Files</button>
+          <button class="tab" data-tab="shared">Shared</button>
+        </div>
+        <div id="list" class="list">
+          <div class="muted">Sign in with PIN to load your files.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      token: localStorage.getItem("rabit_session_token") || "",
+      deviceId: localStorage.getItem("rabit_device_id") || crypto.randomUUID(),
+      tab: "photos",
+      library: { photos: [], videos: [], files: [] },
+      shared: []
+    };
+    localStorage.setItem("rabit_device_id", state.deviceId);
+
+    const authOverlay = document.getElementById("auth-overlay");
+    const authBtn = document.getElementById("auth-btn");
+    const pinInput = document.getElementById("pin");
+    const authError = document.getElementById("auth-error");
+    const list = document.getElementById("list");
+    const refreshBtn = document.getElementById("refresh-btn");
+    const revokeBtn = document.getElementById("revoke-btn");
+    const dropZone = document.getElementById("drop-zone");
+    const pick = document.getElementById("pick");
+    const progress = document.getElementById("progress");
+    const bar = document.getElementById("bar");
+
+    function fmtSize(bytes) {
+      if (!bytes || bytes < 0) return "Unknown";
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+      if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+      return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
+    }
+
+    function fmtDate(ts) {
+      if (!ts) return "";
+      const ms = ts < 1000000000000 ? ts * 1000 : ts;
+      return new Date(ms).toLocaleString();
+    }
+
+    function setAuthenticated(ok) {
+      authOverlay.style.display = ok ? "none" : "grid";
+    }
+
+    async function auth() {
+      authError.style.display = "none";
+      const pin = pinInput.value.trim();
+      if (!pin) return;
+      try {
+        const res = await fetch("/auth", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Device-Id": state.deviceId
+          },
+          body: JSON.stringify({ pin })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error("Auth failed");
+        state.token = data.message;
+        localStorage.setItem("rabit_session_token", state.token);
+        setAuthenticated(true);
+        await refreshAll();
+      } catch (e) {
+        authError.style.display = "block";
+      }
+    }
+
+    async function safeFetch(url, init = {}) {
+      const headers = {
+        ...(init.headers || {}),
+        "X-Session-Token": state.token,
+        "X-Device-Id": state.deviceId
+      };
+      const res = await fetch(url, { ...init, headers });
+      if (res.status === 401) {
+        state.token = "";
+        localStorage.removeItem("rabit_session_token");
+        setAuthenticated(false);
+        throw new Error("Session expired");
+      }
+      return res;
+    }
+
+    function renderItems(items, kind) {
+      if (!items.length) {
+        list.innerHTML = '<div class="muted">No items found. Grant media/storage permissions in Rabit if needed.</div>';
+        return;
+      }
+      list.innerHTML = items.map((it) => {
+        const meta = `${fmtSize(it.size)} • ${fmtDate(it.modifiedAt)} • ${it.mimeType || "unknown"}`;
+        const href = kind === "shared" ? `/download/${encodeURIComponent(it.id)}?token=${encodeURIComponent(state.token)}` : `/library/download/${encodeURIComponent(it.kind)}/${encodeURIComponent(it.id)}`;
+        return `
+          <article class="item">
+            <div>
+              <div class="name" title="${it.name}">${it.name}</div>
+              <div class="meta">${meta}</div>
+            </div>
+            <a class="btn" href="${href}">Download</a>
+          </article>
+        `;
+      }).join("");
+    }
+
+    async function refreshAll() {
+      const [libraryRes, sharedRes] = await Promise.all([
+        safeFetch("/library"),
+        safeFetch("/shared-files")
+      ]);
+      state.library = await libraryRes.json();
+      state.shared = await sharedRes.json();
+      renderActiveTab();
+    }
+
+    function renderActiveTab() {
+      if (state.tab === "shared") {
+        renderItems(state.shared, "shared");
+        return;
+      }
+      const entries = state.library[state.tab] || [];
+      renderItems(entries, state.tab);
+    }
+
+    async function uploadFiles(files) {
+      if (!files || !files.length) return;
+      const form = new FormData();
+      for (const file of files) form.append("file", file);
+      progress.style.display = "block";
+      bar.style.width = "0%";
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/upload");
+        xhr.setRequestHeader("X-Session-Token", state.token);
+        xhr.setRequestHeader("X-Device-Id", state.deviceId);
+        xhr.upload.onprogress = (e) => {
+          if (!e.lengthComputable) return;
+          const pct = Math.min(100, (e.loaded / e.total) * 100);
+          bar.style.width = `${pct.toFixed(0)}%`;
+        };
+        xhr.onload = async () => {
+          progress.style.display = "none";
+          if (xhr.status >= 200 && xhr.status < 300) {
+            await refreshAll();
+            resolve();
+            return;
+          }
+          reject(new Error("Upload failed"));
+        };
+        xhr.onerror = () => {
+          progress.style.display = "none";
+          reject(new Error("Network error"));
+        };
+        xhr.send(form);
+      });
+    }
+
+    authBtn.addEventListener("click", auth);
+    pinInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") auth();
+    });
+
+    refreshBtn.addEventListener("click", async () => {
+      if (!state.token) return;
+      try { await refreshAll(); } catch (e) {}
+    });
+
+    revokeBtn.addEventListener("click", async () => {
+      if (!state.token) return;
+      try {
+        await safeFetch("/revoke-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: state.token })
+        });
+      } catch (e) {}
+      state.token = "";
+      localStorage.removeItem("rabit_session_token");
+      setAuthenticated(false);
+    });
+
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        state.tab = tab.getAttribute("data-tab");
+        renderActiveTab();
+      });
+    });
+
+    dropZone.addEventListener("click", () => pick.click());
+    pick.addEventListener("change", async (e) => {
+      if (!state.token) return;
+      try { await uploadFiles(e.target.files); } catch (err) { alert("Upload failed."); }
+      pick.value = "";
+    });
+
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("active");
+    });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("active"));
+    dropZone.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("active");
+      if (!state.token) return;
+      try { await uploadFiles(e.dataTransfer.files); } catch (err) { alert("Upload failed."); }
+    });
+
+    (async function bootstrap() {
+      if (!state.token) {
+        setAuthenticated(false);
+        return;
+      }
+      setAuthenticated(true);
+      try {
+        await refreshAll();
+      } catch (e) {
+        setAuthenticated(false);
+      }
+    })();
+  </script>
+</body>
+</html>

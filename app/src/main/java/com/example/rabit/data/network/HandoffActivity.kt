@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -82,7 +83,12 @@ class HandoffActivity : Activity() {
 
             override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
                 resolved = true
-                val host = serviceInfo.host.hostAddress
+                val host = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    serviceInfo.hostAddresses.firstOrNull()?.hostAddress
+                } else {
+                    @Suppress("DEPRECATION")
+                    serviceInfo.host?.hostAddress
+                }
                 val port = serviceInfo.port
                 Log.d("HandoffActivity", "Resolved Mac at $host:$port")
                 sendToMac(url, host ?: "", port)
@@ -98,6 +104,7 @@ class HandoffActivity : Activity() {
                 Log.d("HandoffActivity", "NSD service found: ${serviceInfo.serviceName}")
                 if (serviceInfo.serviceName.contains("rabit", ignoreCase = true)) {
                     try {
+                        @Suppress("DEPRECATION")
                         nsdManager.resolveService(serviceInfo, resolveListener)
                     } catch (e: Exception) {
                         Log.e("HandoffActivity", "Resolve error", e)

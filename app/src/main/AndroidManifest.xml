@@ -22,12 +22,14 @@
     <!-- Feature 1: Needed to save received files to Downloads -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
     <uses-feature android:name="android.hardware.bluetooth" android:required="true"/>
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
-        android:name=".RabitApp"
+        android:name="com.example.rabit.RabitApp"
         android:allowBackup="true"
         android:usesCleartextTraffic="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -39,7 +41,7 @@
         android:theme="@style/Theme.Rabit">
 
         <activity
-            android:name=".MainActivity"
+            android:name="com.example.rabit.MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@style/Theme.Rabit">
@@ -63,13 +65,13 @@
         </activity>
 
         <service
-            android:name=".data.bluetooth.HidService"
+            android:name="com.example.rabit.data.bluetooth.HidService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
         <service
-            android:name=".data.bluetooth.RabitNotificationListener"
+            android:name="com.example.rabit.data.bluetooth.RabitNotificationListener"
             android:label="@string/app_name"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
             android:exported="true">
@@ -80,7 +82,7 @@
 
         <!-- Feature 2: Handles media notification button taps -->
         <receiver
-            android:name=".data.network.MediaActionReceiver"
+            android:name="com.example.rabit.data.network.MediaActionReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.example.rabit.MEDIA_ACTION" />
@@ -89,7 +91,7 @@
 
         <!-- Feature 3: Share target to hand off URLs from phone to Mac -->
         <activity
-            android:name=".data.network.HandoffActivity"
+            android:name="com.example.rabit.data.network.HandoffActivity"
             android:exported="true"
             android:theme="@android:style/Theme.NoDisplay"
             android:label="Send to Mac">
@@ -102,7 +104,7 @@
 
         <!-- Feature 4: Quick Settings Tile for one-tap connect/disconnect -->
         <service
-            android:name=".data.bluetooth.RabitQsTile"
+            android:name="com.example.rabit.data.bluetooth.RabitQsTile"
             android:label="Rabit Pro"
             android:icon="@android:drawable/stat_sys_data_bluetooth"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
@@ -113,7 +115,7 @@
         </service>
 
         <service
-            android:name=".data.bluetooth.LockMacTile"
+            android:name="com.example.rabit.data.bluetooth.LockMacTile"
             android:label="Lock Mac"
             android:icon="@android:drawable/ic_lock_lock"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
@@ -124,7 +126,7 @@
         </service>
 
         <service
-            android:name=".data.bluetooth.SleepMacTile"
+            android:name="com.example.rabit.data.bluetooth.SleepMacTile"
             android:label="Sleep Mac"
             android:icon="@android:drawable/ic_lock_power_off"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"

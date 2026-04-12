@@ -6,6 +6,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
+import android.os.Parcelable
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -20,7 +22,7 @@ import kotlin.experimental.or
 @SuppressLint("MissingPermission")
 class HidDeviceManager private constructor(private val context: Context) {
 
-    private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+    private val bluetoothAdapter: BluetoothAdapter? = context.getSystemService(BluetoothManager::class.java)?.adapter
     private var hidDevice: BluetoothHidDevice? = null
     private var connectedDevice: BluetoothDevice? = null
     private var deviceRepository: com.example.rabit.domain.repository.DeviceRepository? = null
@@ -34,6 +36,12 @@ class HidDeviceManager private constructor(private val context: Context) {
     private var reconnectJob: Job? = null
     private var connectionTimeoutJob: Job? = null
     private var isManuallyDisconnected = false
+    private var pendingBondAddress: String? = null
+    private var pendingConnectRetries: Int = 3
+    private var pendingRetryDelayMs: Long = 1500
+    private val reconnectInitialDelayMs = 1000L
+    private val reconnectMaxDelayMs = 12000L
+    private val reconnectAttemptsPerCycle = 8
 
     private data class ReportRequest(val id: Int, val data: ByteArray)
     private val reportChannel = Channel<ReportRequest>(Channel.UNLIMITED)
@@ -59,6 +67,31 @@ class HidDeviceManager private constructor(private val context: Context) {
                     handleBluetoothOff()
                 } else if (state == BluetoothAdapter.STATE_ON) {
                     initProfiles()
+                }
+            }
+        }
+    }
+
+    private val bondStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != BluetoothDevice.ACTION_BOND_STATE_CHANGED) return
+
+            val device = intent.parcelableExtraCompat<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE) ?: return
+            if (pendingBondAddress != device.address) return
+
+            val bondState = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE)
+            val previousBondState = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.BOND_NONE)
+
+            when (bondState) {
+                BluetoothDevice.BOND_BONDED -> {
+                    pendingBondAddress = null
+                    connectWithRetry(device, pendingConnectRetries, pendingRetryDelayMs)
+                }
+                BluetoothDevice.BOND_NONE -> {
+                    if (previousBondState == BluetoothDevice.BOND_BONDING) {
+                        pendingBondAddress = null
+                        _connectionState.value = ConnectionState.Disconnected
+                    }
                 }
             }
         }
@@ -115,6 +148,8 @@ class HidDeviceManager private constructor(private val context: Context) {
     init {
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
         context.registerReceiver(bluetoothStateReceiver, filter)
+        val bondFilter = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+        context.registerReceiver(bondStateReceiver, bondFilter)
         initProfiles()
         
         deviceRepository = com.example.rabit.data.repository.DeviceRepositoryImpl(context)
@@ -141,12 +176,12 @@ class HidDeviceManager private constructor(private val context: Context) {
 
     private fun registerApp() {
         scope.launch(Dispatchers.IO) {
-            if (bluetoothAdapter?.name != "Infrastructure Hub") {
-                bluetoothAdapter?.name = "Infrastructure Hub"
+            if (bluetoothAdapter?.name != "Rabit Keyboard & Mouse") {
+                bluetoothAdapter?.name = "Rabit Keyboard & Mouse"
             }
             
             val sdpSettings = BluetoothHidDeviceAppSdpSettings(
-                "Infrastructure Hub", "Combo Peripheral", "Infrastructure",
+                "Rabit Keyboard & Mouse", "Keyboard + Mouse", "Rabit",
                 0xC0.toByte(), // 0xC0 = Keyboard (0x40) | Mouse (0x80)
                 HID_REPORT_DESCRIPTOR
             )
@@ -166,9 +201,22 @@ class HidDeviceManager private constructor(private val context: Context) {
         if (device == null || isManuallyDisconnected || bluetoothAdapter?.isEnabled != true) return
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
+            var delayMs = reconnectInitialDelayMs
+            var attemptsInCycle = 0
+
             while (isActive && _connectionState.value is ConnectionState.Disconnected && (bluetoothAdapter?.isEnabled == true)) {
+                attemptsInCycle += 1
                 hidDevice?.connect(device)
-                delay(2000) // Reduced from 5000ms for faster reconnection
+
+                if (attemptsInCycle >= reconnectAttemptsPerCycle) {
+                    // Cool down after a burst of retries to avoid connection flapping.
+                    attemptsInCycle = 0
+                    delayMs = reconnectInitialDelayMs
+                    delay(5000)
+                } else {
+                    delay(delayMs)
+                    delayMs = (delayMs * 2).coerceAtMost(reconnectMaxDelayMs)
+                }
             }
         }
     }
@@ -179,6 +227,22 @@ class HidDeviceManager private constructor(private val context: Context) {
         _connectionState.value = ConnectionState.Connecting
         
         scope.launch(Dispatchers.IO) {
+            ensureHidProfileReady()
+            if (device.bondState != BluetoothDevice.BOND_BONDED) {
+                pendingBondAddress = device.address
+                pendingConnectRetries = 3
+                pendingRetryDelayMs = 1500
+                try {
+                    val startedBonding = device.createBond()
+                    if (!startedBonding && device.bondState != BluetoothDevice.BOND_BONDING) {
+                        _connectionState.value = ConnectionState.Disconnected
+                    }
+                } catch (e: Exception) {
+                    _connectionState.value = ConnectionState.Disconnected
+                }
+                return@launch
+            }
+
             hidDevice?.connect(device)
             
             // Start connection timeout within the background scope
@@ -203,6 +267,22 @@ class HidDeviceManager private constructor(private val context: Context) {
         
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
+            ensureHidProfileReady()
+            if (device.bondState != BluetoothDevice.BOND_BONDED) {
+                pendingBondAddress = device.address
+                pendingConnectRetries = maxRetries
+                pendingRetryDelayMs = retryDelayMs
+                try {
+                    val startedBonding = device.createBond()
+                    if (!startedBonding && device.bondState != BluetoothDevice.BOND_BONDING) {
+                        _connectionState.value = ConnectionState.Disconnected
+                    }
+                } catch (e: Exception) {
+                    _connectionState.value = ConnectionState.Disconnected
+                }
+                return@launch
+            }
+
             repeat(maxRetries) { attempt ->
                 if (_connectionState.value is ConnectionState.Connected) return@launch
                 Log.d("HidDeviceManager", "Connection attempt ${attempt + 1}/$maxRetries for ${device.name}")
@@ -398,8 +478,27 @@ class HidDeviceManager private constructor(private val context: Context) {
 
     fun unregister() {
         try { context.unregisterReceiver(bluetoothStateReceiver) } catch (e: Exception) { }
+        try { context.unregisterReceiver(bondStateReceiver) } catch (e: Exception) { }
         hidDevice?.unregisterApp()
         bluetoothAdapter?.closeProfileProxy(BluetoothProfile.HID_DEVICE, hidDevice)
+    }
+
+    private suspend fun ensureHidProfileReady(timeoutMs: Long = 2500) {
+        if (hidDevice != null) return
+        initProfiles()
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (hidDevice == null && System.currentTimeMillis() < deadline) {
+            delay(120)
+        }
+    }
+
+    private inline fun <reified T : Parcelable> Intent.parcelableExtraCompat(key: String): T? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(key, T::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            getParcelableExtra(key) as? T
+        }
     }
 
     sealed class ConnectionState {

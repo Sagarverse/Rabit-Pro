@@ -67,7 +67,7 @@ fun FileHubSection(
                             },
                             modifier = Modifier.size(32.dp).background(Obsidian.copy(alpha=0.5f), CircleShape)
                         ) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Silver, modifier = Modifier.size(16.dp))
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Silver, modifier = Modifier.size(16.dp))
                         }
                     }
                     IconButton(

@@ -1,17 +1,16 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
-//  alias(libs.plugins.google.services)
+    alias(libs.plugins.google.services)
 }
 
 android {
-    namespace = "com.example.rabit"
+    namespace = "com.sagar.rabit"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.rabit"
+        applicationId = "com.sagar.rabit"
         minSdk = 28
         targetSdk = 35
         versionCode = 1
@@ -32,9 +31,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        jvmTarget = "17"
     }
     buildFeatures {
         compose = true
@@ -64,6 +60,7 @@ dependencies {
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.kotlinx.serialization.json)
+    implementation("com.jcraft:jsch:0.1.55")
     
     implementation(libs.mediapipe.genai)
     implementation(libs.zxing.core)
@@ -72,9 +69,9 @@ dependencies {
     implementation("io.github.webrtc-sdk:android:125.6422.07")
 
     // Firebase for Production Signaling
-//    implementation(platform(libs.firebase.bom))
-//    implementation(libs.firebase.firestore)
-//    implementation(libs.firebase.analytics)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.firestore)
+    implementation(libs.firebase.analytics)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

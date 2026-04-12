@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -177,7 +178,7 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                         },
                         Triple(Icons.Default.AutoAwesome, "/system") { showSystemModal = true; viewModel.onInputChanged("") },
                         Triple(Icons.Default.Download, "/download") { viewModel.downloadModel(); viewModel.onInputChanged("") },
-                        Triple(Icons.Default.Help, "/help") { /* Add help logic */ viewModel.onInputChanged("") },
+                        Triple(Icons.AutoMirrored.Filled.Help, "/help") { /* Add help logic */ viewModel.onInputChanged("") },
                         Triple(Icons.Default.DeleteSweep, "/clear") { viewModel.clearMessages(); viewModel.onInputChanged("") }
                     )
                     
@@ -440,7 +441,7 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                         }
                     )
                     AttachmentOption(
-                        icon = Icons.Default.InsertDriveFile,
+                        icon = Icons.AutoMirrored.Filled.InsertDriveFile,
                         label = "Documents",
                         description = "Attach text files",
                         iconColor = AccentPurple,

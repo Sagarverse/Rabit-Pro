@@ -11,6 +11,7 @@ import android.os.IBinder
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import com.example.rabit.data.secure.SecureStorage
 import com.example.rabit.data.network.RabitNetworkServer
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.StateFlow
@@ -27,10 +28,12 @@ class HidService : Service() {
     private val channelId = "hid_service_channel"
     private val clipboardChannelId = "clipboard_channel"
     private lateinit var encryptionManager: com.example.rabit.data.secure.EncryptionManager
+    private lateinit var proximitySmartLockManager: ProximitySmartLockManager
     
     companion object {
         const val ACTION_START_WEB_BRIDGE = "com.example.rabit.ACTION_START_WEB_BRIDGE"
         const val ACTION_STOP_WEB_BRIDGE = "com.example.rabit.ACTION_STOP_WEB_BRIDGE"
+        const val ACTION_UPDATE_PROXIMITY_SMART_LOCK = "com.example.rabit.ACTION_UPDATE_PROXIMITY_SMART_LOCK"
     }
 
     private lateinit var clipboard: ClipboardManager
@@ -47,6 +50,12 @@ class HidService : Service() {
         clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
 
         encryptionManager = com.example.rabit.data.secure.EncryptionManager(this)
+        proximitySmartLockManager = ProximitySmartLockManager(
+            context = this,
+            hidDeviceManager = hidDeviceManager,
+            connectionState = hidDeviceManager.connectionState,
+            scope = serviceScope
+        )
 
         // Legacy network listeners removed for File Hub focus
 
@@ -61,6 +70,9 @@ class HidService : Service() {
             serviceScope.launch(Dispatchers.IO) {
                 RabitNetworkServer.start(this@HidService, encryptionManager)
             }
+        }
+        if (prefs.getBoolean("proximity_auto_unlock_enabled", false)) {
+            proximitySmartLockManager.start()
         }
     }
 
@@ -118,6 +130,10 @@ class HidService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_UPDATE_PROXIMITY_SMART_LOCK -> {
+                val enabled = intent.getBooleanExtra("enabled", false)
+                if (enabled) proximitySmartLockManager.start() else proximitySmartLockManager.stop()
+            }
             ACTION_START_WEB_BRIDGE -> {
                 if (!RabitNetworkServer.isRunning) {
                     serviceScope.launch(Dispatchers.IO) {
@@ -160,11 +176,11 @@ class HidService : Service() {
                 showClipboardNotification(text)
             }
             "LOCK_MAC" -> {
-                sendKey(HidKeyCodes.KEY_Q, (HidKeyCodes.MOD_LEFT_CONTROL or HidKeyCodes.MOD_LEFT_GUI).toByte())
+                val modifier = (HidKeyCodes.MODIFIER_LEFT_CTRL.toInt() or HidKeyCodes.MODIFIER_LEFT_GUI.toInt()).toByte()
+                sendKey(HidKeyCodes.KEY_Q, modifier)
             }
             "UNLOCK_MAC" -> {
-                val prefs = getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
-                val macPass = prefs.getString("mac_password", "") ?: ""
+                val macPass = SecureStorage(applicationContext).getMacPassword() ?: ""
                 if (macPass.isNotEmpty()) {
                     unlockMac(macPass)
                 } else {
@@ -172,7 +188,7 @@ class HidService : Service() {
                 }
             }
             "STOP_APP" -> {
-                stopForeground(true)
+                stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
         }
@@ -290,6 +306,7 @@ class HidService : Service() {
     fun unlockMac(password: String) = hidDeviceManager.unlockMac(password)
 
     override fun onDestroy() {
+        proximitySmartLockManager.stop()
         RabitNetworkServer.stop()
         serviceScope.cancel()
         hidDeviceManager.unregister()

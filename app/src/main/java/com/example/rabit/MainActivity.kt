@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Parcelable
 import androidx.activity.compose.setContent
 import androidx.fragment.app.FragmentActivity
 import androidx.activity.result.contract.ActivityResultContracts
@@ -87,13 +88,31 @@ class MainActivity : FragmentActivity() {
         
         when (intent.action) {
             Intent.ACTION_SEND -> {
-                val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+                val uri = intent.parcelableExtraCompat<android.net.Uri>(Intent.EXTRA_STREAM)
                 uri?.let { viewModel.addSharedFile(it) }
             }
             Intent.ACTION_SEND_MULTIPLE -> {
-                val uris = intent.getParcelableArrayListExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+                val uris = intent.parcelableArrayListExtraCompat<android.net.Uri>(Intent.EXTRA_STREAM)
                 uris?.forEach { viewModel.addSharedFile(it) }
             }
+        }
+    }
+
+    private inline fun <reified T : Parcelable> Intent.parcelableExtraCompat(key: String): T? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableExtra(key, T::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            getParcelableExtra(key) as? T
+        }
+    }
+
+    private inline fun <reified T : Parcelable> Intent.parcelableArrayListExtraCompat(key: String): ArrayList<T>? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getParcelableArrayListExtra(key, T::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            getParcelableArrayListExtra(key)
         }
     }
 }
@@ -104,10 +123,49 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
     val startDest = if (viewModel.onboardingCompleted) "pairing" else "onboarding"
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route ?: startDest
+    val featureWebBridgeVisible by viewModel.featureWebBridgeVisible.collectAsState()
+    val featureAutomationVisible by viewModel.featureAutomationVisible.collectAsState()
+    val featureAssistantVisible by viewModel.featureAssistantVisible.collectAsState()
+    val featureSnippetsVisible by viewModel.featureSnippetsVisible.collectAsState()
+    val featureShortcutsVisible by viewModel.featureShortcutsVisible.collectAsState()
+    val featureWakeOnLanVisible by viewModel.featureWakeOnLanVisible.collectAsState()
+    val featureSshTerminalVisible by viewModel.featureSshTerminalVisible.collectAsState()
 
     // Routes that should NOT show the professional drawer (Onboarding & Initial Pairing)
     val noDrawerRoutes = listOf("onboarding", "pairing", "onboarding_splash", "assistant")
     val showDrawer = currentRoute.split("?").first() !in noDrawerRoutes
+
+    fun routeAllowed(route: String): Boolean {
+        return when (route) {
+            "web_bridge" -> featureWebBridgeVisible
+            "automation" -> featureAutomationVisible
+            "assistant" -> featureAssistantVisible
+            "snippets" -> featureSnippetsVisible
+            "shortcuts" -> featureShortcutsVisible
+            "wake_on_lan" -> featureWakeOnLanVisible
+            "ssh_terminal" -> featureSshTerminalVisible
+            else -> true
+        }
+    }
+
+    LaunchedEffect(
+        currentRoute,
+        featureWebBridgeVisible,
+        featureAutomationVisible,
+        featureAssistantVisible,
+        featureSnippetsVisible,
+        featureShortcutsVisible,
+        featureWakeOnLanVisible,
+        featureSshTerminalVisible
+    ) {
+        val current = currentRoute.split("?").first()
+        if (!routeAllowed(current)) {
+            navController.navigate("keyboard") {
+                popUpTo(current) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
 
     val navHost = @Composable { padding: androidx.compose.foundation.layout.PaddingValues ->
         Box(modifier = Modifier.padding(padding)) {
@@ -127,8 +185,8 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                         viewModel = viewModel,
                         onConnected = { navController.navigate("keyboard") },
                         onNavigateToSettings = { navController.navigate("settings") },
-                        onNavigateToAssistant = { navController.navigate("assistant") },
-                        onNavigateToWebBridge = { navController.navigate("web_bridge") }
+                        onNavigateToAssistant = { if (featureAssistantVisible) navController.navigate("assistant") },
+                        onNavigateToWebBridge = { if (featureWebBridgeVisible) navController.navigate("web_bridge") }
                     )
                 }
                 composable("keyboard") {
@@ -136,10 +194,10 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                         viewModel = viewModel,
                         onDisconnect = { navController.navigate("pairing") { popUpTo(0) } },
                         onNavigateToSettings = { navController.navigate("settings") },
-                        onNavigateToAssistant = { navController.navigate("assistant") },
-                        onNavigateToSnippets = { navController.navigate("snippets") },
-                        onNavigateToShortcuts = { navController.navigate("shortcuts") },
-                        onNavigateToWebBridge = { navController.navigate("web_bridge") }
+                        onNavigateToAssistant = { if (featureAssistantVisible) navController.navigate("assistant") },
+                        onNavigateToSnippets = { if (featureSnippetsVisible) navController.navigate("snippets") },
+                        onNavigateToShortcuts = { if (featureShortcutsVisible) navController.navigate("shortcuts") },
+                        onNavigateToWebBridge = { if (featureWebBridgeVisible) navController.navigate("web_bridge") }
                     )
                 }
                 composable("web_bridge") {
@@ -150,6 +208,20 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                 }
                 composable("automation") {
                     AutomationDashboardScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() },
+                        onNavigateToWakeOnLan = { if (featureWakeOnLanVisible) navController.navigate("wake_on_lan") },
+                        onNavigateToSshTerminal = { if (featureSshTerminalVisible) navController.navigate("ssh_terminal") }
+                    )
+                }
+                composable("wake_on_lan") {
+                    com.example.rabit.ui.automation.WakeOnLanScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable("ssh_terminal") {
+                    com.example.rabit.ui.automation.SshTerminalScreen(
                         viewModel = viewModel,
                         onBack = { navController.popBackStack() }
                     )
@@ -197,12 +269,18 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
             currentRoute = if (currentRoute == "keyboard") "main" else currentRoute,
             onNavigate = { route ->
                 val target = if (route == "main") "keyboard" else route
+                if (!routeAllowed(target)) return@RabitAppScaffold
                 navController.navigate(target) {
                     popUpTo("keyboard") { saveState = true }
                     launchSingleTop = true
                     restoreState = true
                 }
             },
+            featureWebBridgeVisible = featureWebBridgeVisible,
+            featureAutomationVisible = featureAutomationVisible,
+            featureAssistantVisible = featureAssistantVisible,
+            featureWakeOnLanVisible = featureWakeOnLanVisible,
+            featureSshTerminalVisible = featureSshTerminalVisible,
             activeApp = activeApp,
             onBack = { navController.popBackStack() }
         ) { padding ->
@@ -233,7 +311,11 @@ fun BluetoothPermissions(content: @Composable () -> Unit) {
         add(Manifest.permission.RECORD_AUDIO)
         add(Manifest.permission.VIBRATE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            add(Manifest.permission.READ_MEDIA_IMAGES)
+            add(Manifest.permission.READ_MEDIA_VIDEO)
             add(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
     }
 

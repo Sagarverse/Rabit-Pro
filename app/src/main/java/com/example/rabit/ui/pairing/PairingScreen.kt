@@ -2,6 +2,7 @@ package com.example.rabit.ui.pairing
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.Intent
 import android.provider.Settings
 import android.util.Log
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -54,7 +56,7 @@ fun PairingScreen(
     val context = LocalContext.current
 
     // Check if Bluetooth is enabled
-    val bluetoothAdapter = remember { BluetoothAdapter.getDefaultAdapter() }
+    val bluetoothAdapter = remember { context.getSystemService(BluetoothManager::class.java)?.adapter }
     var isBluetoothEnabled by remember { mutableStateOf(bluetoothAdapter?.isEnabled == true) }
 
     // Use a single connecting device state for per-device spinners
@@ -149,7 +151,7 @@ fun PairingScreen(
                     )
                 }
                 
-                Divider(color = BorderColor.copy(alpha = 0.1f), modifier = Modifier.padding(horizontal = 20.dp))
+                HorizontalDivider(color = BorderColor.copy(alpha = 0.1f), modifier = Modifier.padding(horizontal = 20.dp))
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Drawer Items
@@ -520,7 +522,7 @@ fun PairingScreen(
                                         RadarAnimationSmall()
                                     } else {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Icon(Icons.Default.BluetoothSearching, contentDescription = null, tint = Silver.copy(alpha = 0.3f), modifier = Modifier.size(32.dp))
+                                            Icon(Icons.AutoMirrored.Filled.BluetoothSearching, contentDescription = null, tint = Silver.copy(alpha = 0.3f), modifier = Modifier.size(32.dp))
                                             Spacer(modifier = Modifier.height(8.dp))
                                             Text("No new devices found", color = Silver.copy(alpha = 0.6f), fontSize = 13.sp)
                                         }
@@ -603,7 +605,7 @@ fun PairingScreen(
                                     Text("Skip to Chat Assistant", color = Platinum, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                                     Text("Use offline AI mode without connecting", color = Silver, fontSize = 12.sp)
                                 }
-                                Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = AiViolet, modifier = Modifier.size(16.dp))
+                                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = AiViolet, modifier = Modifier.size(16.dp))
                             }
                         }
                     }

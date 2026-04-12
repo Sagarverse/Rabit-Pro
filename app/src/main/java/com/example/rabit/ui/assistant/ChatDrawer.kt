@@ -7,6 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -85,7 +86,7 @@ fun AssistantDrawerContent(
         Spacer(modifier = Modifier.height(12.dp))
         Column(modifier = Modifier.padding(horizontal = 8.dp)) {
             DrawerItem(Icons.Default.AutoAwesome, "Macro Genie", AccentGold, onClick = onMacroGenieClick)
-            DrawerItem(Icons.Default.LibraryBooks, "Prompt Library", Silver, onClick = onPromptLibraryClick)
+            DrawerItem(Icons.AutoMirrored.Filled.LibraryBooks, "Prompt Library", Silver, onClick = onPromptLibraryClick)
             DrawerItem(Icons.Default.Memory, "Hardware Monitor", Silver, onClick = onHardwareMonitorClick)
         }
 
@@ -370,7 +371,7 @@ fun ModelManagerSection(
                                 }, 
                                 modifier = Modifier.size(32.dp)
                             ) {
-                                Icon(Icons.Default.OpenInNew, contentDescription = "Get Model", tint = AiViolet, modifier = Modifier.size(20.dp))
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Get Model", tint = AiViolet, modifier = Modifier.size(20.dp))
                             }
                         }
                     } else if (isActive) {

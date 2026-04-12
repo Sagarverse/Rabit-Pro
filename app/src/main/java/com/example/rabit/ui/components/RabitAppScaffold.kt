@@ -22,7 +22,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.rabit.R
+import com.sagar.rabit.R
 import com.example.rabit.ui.theme.*
 
 /**
@@ -34,6 +34,11 @@ import com.example.rabit.ui.theme.*
 fun RabitAppScaffold(
     currentRoute: String,
     onNavigate: (String) -> Unit,
+    featureWebBridgeVisible: Boolean = true,
+    featureAutomationVisible: Boolean = true,
+    featureAssistantVisible: Boolean = true,
+    featureWakeOnLanVisible: Boolean = true,
+    featureSshTerminalVisible: Boolean = true,
     activeApp: String? = null,
     onBack: (() -> Unit)? = null,
     topBarActions: @Composable RowScope.() -> Unit = {},
@@ -44,7 +49,7 @@ fun RabitAppScaffold(
     val isMono = AppThemeMode.isMonochrome
 
     // Main routes accessible from drawer
-    val mainRoutes = listOf("main", "keyboard", "web_bridge", "assistant", "settings")
+    val mainRoutes = listOf("main", "keyboard", "web_bridge", "assistant", "settings", "wake_on_lan", "ssh_terminal")
     val isSubPage = currentRoute !in mainRoutes
 
     val screenTitle = when(currentRoute) {
@@ -56,6 +61,8 @@ fun RabitAppScaffold(
         "customization" -> "THEME"
         "snippets" -> "SNIPPETS"
         "shortcuts" -> "GUIDE"
+        "wake_on_lan" -> "WAKE ON LAN"
+        "ssh_terminal" -> "SSH TERMINAL"
         else -> "RABIT PRO"
     }
 
@@ -74,7 +81,7 @@ fun RabitAppScaffold(
                 DrawerItem(
                     label = "Control Hub",
                     subLabel = "Keyboard & Trackpad",
-                    icon = Icons.Default.Dvr,
+                    icon = Icons.AutoMirrored.Filled.Dvr,
                     selected = currentRoute == "main" || currentRoute == "keyboard",
                     onClick = { 
                         onNavigate("keyboard")
@@ -82,38 +89,70 @@ fun RabitAppScaffold(
                     }
                 )
 
-                DrawerItem(
-                    label = "Web Bridge Hub",
-                    subLabel = "File Sharing & Sync",
-                    icon = Icons.Default.CloudSync,
-                    selected = currentRoute == "web_bridge",
-                    onClick = { 
-                        onNavigate("web_bridge")
-                        scope.launch { drawerState.close() }
-                    }
-                )
+                if (featureWebBridgeVisible) {
+                    DrawerItem(
+                        label = "Web Bridge Hub",
+                        subLabel = "File Sharing & Sync",
+                        icon = Icons.Default.CloudSync,
+                        selected = currentRoute == "web_bridge",
+                        onClick = {
+                            onNavigate("web_bridge")
+                            scope.launch { drawerState.close() }
+                        }
+                    )
+                }
 
-                DrawerItem(
-                    label = "Automation Hub",
-                    subLabel = "Macros & Quick Actions",
-                    icon = Icons.Default.Bolt,
-                    selected = currentRoute == "automation",
-                    onClick = { 
-                        onNavigate("automation")
-                        scope.launch { drawerState.close() }
-                    }
-                )
+                if (featureAutomationVisible) {
+                    DrawerItem(
+                        label = "Automation Hub",
+                        subLabel = "Macros & Quick Actions",
+                        icon = Icons.Default.Bolt,
+                        selected = currentRoute == "automation",
+                        onClick = {
+                            onNavigate("automation")
+                            scope.launch { drawerState.close() }
+                        }
+                    )
+                }
 
-                DrawerItem(
-                    label = "AI Assistant",
-                    subLabel = "Smart Control & Logic",
-                    icon = Icons.Default.AutoAwesome,
-                    selected = currentRoute == "assistant",
-                    onClick = { 
-                        onNavigate("assistant")
-                        scope.launch { drawerState.close() }
-                    }
-                )
+                if (featureWakeOnLanVisible) {
+                    DrawerItem(
+                        label = "Wake-on-LAN",
+                        subLabel = "Boot Sleeping Mac/PC",
+                        icon = Icons.Default.PowerSettingsNew,
+                        selected = currentRoute == "wake_on_lan",
+                        onClick = {
+                            onNavigate("wake_on_lan")
+                            scope.launch { drawerState.close() }
+                        }
+                    )
+                }
+
+                if (featureSshTerminalVisible) {
+                    DrawerItem(
+                        label = "SSH Terminal",
+                        subLabel = "Native secure shell",
+                        icon = Icons.Default.Terminal,
+                        selected = currentRoute == "ssh_terminal",
+                        onClick = {
+                            onNavigate("ssh_terminal")
+                            scope.launch { drawerState.close() }
+                        }
+                    )
+                }
+
+                if (featureAssistantVisible) {
+                    DrawerItem(
+                        label = "AI Assistant",
+                        subLabel = "Smart Control & Logic",
+                        icon = Icons.Default.AutoAwesome,
+                        selected = currentRoute == "assistant",
+                        onClick = {
+                            onNavigate("assistant")
+                            scope.launch { drawerState.close() }
+                        }
+                    )
+                }
 
                 Spacer(modifier = Modifier.weight(1f))
 

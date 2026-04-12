@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,7 +36,14 @@ fun CustomizationScreen(
     val stealthMode by viewModel.stealthModeEnabled.collectAsState()
     val dynamicTheme by viewModel.dynamicThemeEnabled.collectAsState()
     val autoReconnect by viewModel.autoReconnectEnabled.collectAsState()
-    val password by viewModel.unlockPassword.collectAsState()
+    val password by viewModel.macPassword.collectAsState()
+    val featureWebBridgeVisible by viewModel.featureWebBridgeVisible.collectAsState()
+    val featureAutomationVisible by viewModel.featureAutomationVisible.collectAsState()
+    val featureAssistantVisible by viewModel.featureAssistantVisible.collectAsState()
+    val featureSnippetsVisible by viewModel.featureSnippetsVisible.collectAsState()
+    val featureShortcutsVisible by viewModel.featureShortcutsVisible.collectAsState()
+    val featureWakeOnLanVisible by viewModel.featureWakeOnLanVisible.collectAsState()
+    val featureSshTerminalVisible by viewModel.featureSshTerminalVisible.collectAsState()
 
     var showPasswordDialog by remember { mutableStateOf(false) }
 
@@ -195,6 +203,72 @@ fun CustomizationScreen(
                 )
             }
 
+            PremiumSectionHeader("FEATURE VISIBILITY")
+            PremiumGlassCard {
+                SettingsToggleItem(
+                    title = "Show Web Bridge",
+                    subtitle = "Browser portal and file sync pages",
+                    icon = Icons.Default.CloudSync,
+                    iconColor = AccentBlue,
+                    checked = featureWebBridgeVisible,
+                    onCheckedChange = { viewModel.setFeatureWebBridgeVisible(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsToggleItem(
+                    title = "Show Automation Hub",
+                    subtitle = "Macro dashboard and quick tools",
+                    icon = Icons.Default.Bolt,
+                    iconColor = AccentGold,
+                    checked = featureAutomationVisible,
+                    onCheckedChange = { viewModel.setFeatureAutomationVisible(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsToggleItem(
+                    title = "Show AI Assistant",
+                    subtitle = "Chat assistant screen and tools",
+                    icon = Icons.Default.AutoAwesome,
+                    iconColor = AccentTeal,
+                    checked = featureAssistantVisible,
+                    onCheckedChange = { viewModel.setFeatureAssistantVisible(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsToggleItem(
+                    title = "Show Snippets",
+                    subtitle = "Saved text snippets screen",
+                    icon = Icons.AutoMirrored.Filled.Notes,
+                    iconColor = AccentPurple,
+                    checked = featureSnippetsVisible,
+                    onCheckedChange = { viewModel.setFeatureSnippetsVisible(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsToggleItem(
+                    title = "Show Shortcuts Guide",
+                    subtitle = "Keyboard shortcut helper screen",
+                    icon = Icons.Default.Keyboard,
+                    iconColor = AccentPink,
+                    checked = featureShortcutsVisible,
+                    onCheckedChange = { viewModel.setFeatureShortcutsVisible(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsToggleItem(
+                    title = "Show Wake-on-LAN",
+                    subtitle = "Network power-on tool",
+                    icon = Icons.Default.PowerSettingsNew,
+                    iconColor = SuccessGreen,
+                    checked = featureWakeOnLanVisible,
+                    onCheckedChange = { viewModel.setFeatureWakeOnLanVisible(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsToggleItem(
+                    title = "Show SSH Terminal",
+                    subtitle = "Native secure shell screen",
+                    icon = Icons.Default.Terminal,
+                    iconColor = AccentOrange,
+                    checked = featureSshTerminalVisible,
+                    onCheckedChange = { viewModel.setFeatureSshTerminalVisible(it) }
+                )
+            }
+
             Spacer(modifier = Modifier.height(40.dp))
         }
     }
@@ -215,7 +289,7 @@ fun CustomizationScreen(
                 )
             },
             confirmButton = {
-                Button(onClick = { viewModel.setUnlockPassword(tempPass); showPasswordDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) { Text("Save") }
+                Button(onClick = { viewModel.setMacPassword(tempPass); showPasswordDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) { Text("Save") }
             },
             dismissButton = { TextButton(onClick = { showPasswordDialog = false }) { Text("Cancel", color = Silver) } }
         )
