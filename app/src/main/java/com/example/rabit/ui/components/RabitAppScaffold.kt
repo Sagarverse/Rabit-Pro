@@ -34,6 +34,7 @@ import com.example.rabit.ui.theme.*
 fun RabitAppScaffold(
     currentRoute: String,
     onNavigate: (String) -> Unit,
+    activeApp: String? = null,
     onBack: (() -> Unit)? = null,
     topBarActions: @Composable RowScope.() -> Unit = {},
     content: @Composable (PaddingValues) -> Unit
@@ -104,8 +105,8 @@ fun RabitAppScaffold(
                 )
 
                 DrawerItem(
-                    label = "Macro Genie",
-                    subLabel = "AI Intelligent Macros",
+                    label = "AI Assistant",
+                    subLabel = "Smart Control & Logic",
                     icon = Icons.Default.AutoAwesome,
                     selected = currentRoute == "assistant",
                     onClick = { 
@@ -145,13 +146,30 @@ fun RabitAppScaffold(
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 2.sp
                             )
-                            Text(
-                                text = "PRO v2.5",
-                                color = AccentBlue.copy(alpha = 0.6f),
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "PRO v2.5",
+                                    color = AccentBlue.copy(alpha = 0.6f),
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                                if (activeApp != null) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Surface(
+                                        color = Silver.copy(alpha = 0.1f),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = activeApp.uppercase(),
+                                            color = SuccessGreen,
+                                            fontSize = 7.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     },
                     navigationIcon = {

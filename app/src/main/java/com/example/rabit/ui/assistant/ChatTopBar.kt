@@ -69,34 +69,18 @@ fun PremiumChatTopBar(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Animated AI Orb
+                        // Minimalist Model Indicator
                         Box(
-                            modifier = Modifier.size(34.dp),
+                            modifier = Modifier
+                                .size(34.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            // Outer glow
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .alpha(orbAlpha * 0.35f)
-                                    .background(
-                                        Brush.radialGradient(
-                                            listOf(orbColor, Color.Transparent)
-                                        ),
-                                        CircleShape
-                                    )
-                            )
-                            // Inner orb
-                            Box(
-                                modifier = Modifier
-                                    .size(14.dp)
-                                    .background(
-                                        Brush.radialGradient(
-                                            listOf(orbColor, orbColor.copy(alpha = 0.6f))
-                                        ),
-                                        CircleShape
-                                    )
-                                    .border(1.dp, orbColor.copy(alpha = orbAlpha * 0.5f), CircleShape)
+                            Text(
+                                if (modelName.contains("Gemini")) "G" else "M",
+                                color = if (isThinking) AccentGold else Platinum,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 22.sp,
+                                modifier = Modifier.alpha(if (isThinking) orbAlpha else 1f)
                             )
                         }
                         Spacer(modifier = Modifier.width(12.dp))
@@ -143,9 +127,6 @@ fun PremiumChatTopBar(
                 actions = {
                     IconButton(onClick = onNewChat) {
                         Icon(Icons.Default.Add, contentDescription = "New Chat", tint = Platinum)
-                    }
-                    IconButton(onClick = onLaunchpadClick) {
-                        Icon(Icons.Default.RocketLaunch, contentDescription = "Launchpad", tint = AccentGold.copy(alpha = 0.9f))
                     }
                     IconButton(onClick = onExportChat) {
                         Icon(Icons.Default.IosShare, contentDescription = "Export Chat", tint = Silver.copy(alpha = 0.8f))

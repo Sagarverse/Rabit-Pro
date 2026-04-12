@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.rabit.data.voice.VoiceState
 import com.example.rabit.ui.MainViewModel
-import com.example.rabit.ui.components.PremiumBottomBar
 import com.example.rabit.ui.theme.*
 import kotlinx.coroutines.launch
 
@@ -64,7 +63,6 @@ fun AssistantScreen(
 
     var showPromptLibrary by remember { mutableStateOf(false) }
     var showHardwareMonitor by remember { mutableStateOf(false) }
-    var showMacroLaunchpad by remember { mutableStateOf(false) }
     var showMacroGenie by remember { mutableStateOf(false) }
 
     // Auto-Push logic — fires haptic when pushing
@@ -106,8 +104,23 @@ fun AssistantScreen(
             }
         }
     ) {
+        val hidConnectionState by mainViewModel.connectionState.collectAsState()
+
         Scaffold(
-            containerColor = ChatSurface
+            containerColor = ChatSurface,
+            topBar = {
+                PremiumChatTopBar(
+                    modelName = modelName,
+                    isThinking = uiState is AssistantUiState.Loading,
+                    connectionState = hidConnectionState,
+                    onMenuClick = { scope.launch { drawerState.open() } },
+                    onClearChat = { viewModel.clearConversation() },
+                    onNewChat = { viewModel.clearConversation() },
+                    onExportChat = { viewModel.exportChatHistory(context) },
+                    onLaunchpadClick = { /* Not needed in Pro navigation */ },
+                    onSettingsClick = { onNavigateToSettings() }
+                )
+            }
         ) { padding ->
             val modelLoadState by viewModel.modelLoadState.collectAsState()
             val modelCopyProgress by viewModel.modelCopyProgress.collectAsState()
@@ -186,12 +199,6 @@ fun AssistantScreen(
     }
     if (showHardwareMonitor) {
         HardwareMonitorModal(onDismiss = { showHardwareMonitor = false })
-    }
-    if (showMacroLaunchpad) {
-        MacroLaunchpad(
-            viewModel = mainViewModel,
-            onDismiss = { showMacroLaunchpad = false }
-        )
     }
 
     if (showMacroGenie) {

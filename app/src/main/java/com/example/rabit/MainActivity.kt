@@ -190,6 +190,8 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
         }
     }
 
+    val activeApp by viewModel.activeApp.collectAsState()
+
     if (showDrawer) {
         com.example.rabit.ui.components.RabitAppScaffold(
             currentRoute = if (currentRoute == "keyboard") "main" else currentRoute,
@@ -201,6 +203,7 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                     restoreState = true
                 }
             },
+            activeApp = activeApp,
             onBack = { navController.popBackStack() }
         ) { padding ->
             navHost(padding)

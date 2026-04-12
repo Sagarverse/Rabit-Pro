@@ -31,7 +31,7 @@ class GyroscopeAirMouse(context: Context) : SensorEventListener {
     // Shake detection
     var onShakeDetected: (() -> Unit)? = null
     private var lastShakeTime = 0L
-    private val SHAKE_THRESHOLD = 18.0f // m/s^2 (Higher for Pro mode)
+    private val SHAKE_THRESHOLD = 15.0f // m/s^2 (Optimized for Pro responsiveness)
 
     // Calibration state
     private var hasCalibration = false

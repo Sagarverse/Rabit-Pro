@@ -9,6 +9,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -98,6 +100,77 @@ fun CustomizationScreen(
                     checked = autoReconnect,
                     onCheckedChange = { viewModel.setAutoReconnectEnabled(it) }
                 )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                
+                // Haptic Tactile Engine
+                val currentHaptic by viewModel.hapticPreset.collectAsState()
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Dns, contentDescription = null, tint = AccentTeal, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Tactile Engine", color = Platinum, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("Soft", "Mechanical", "Sharp").forEach { preset ->
+                            val isSelected = currentHaptic == preset
+                            Surface(
+                                onClick = { viewModel.setHapticPreset(preset) },
+                                color = if (isSelected) AccentTeal.copy(alpha = 0.15f) else Graphite.copy(alpha = 0.3f),
+                                contentColor = if (isSelected) AccentTeal else Silver,
+                                shape = RoundedCornerShape(8.dp),
+                                border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, AccentTeal.copy(alpha = 0.5f)) else null,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = preset,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 10.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // ── Voice & Speech Section ──
+            PremiumSectionHeader("VOICE & SPEECH ENGINE")
+            PremiumGlassCard {
+                val ttsPitch by viewModel.ttsPitch.collectAsState()
+                val ttsSpeechRate by viewModel.ttsSpeechRate.collectAsState()
+                
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = AccentPink, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Vocal Pitch", color = Platinum, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = ttsPitch,
+                        onValueChange = { viewModel.setTtsPitch(it) },
+                        valueRange = 0.5f..2.0f,
+                        colors = SliderDefaults.colors(thumbColor = AccentPink, activeTrackColor = AccentPink.copy(alpha = 0.5f))
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Speed, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Speech Rate", color = Platinum, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = ttsSpeechRate,
+                        onValueChange = { viewModel.setTtsSpeechRate(it) },
+                        valueRange = 0.5f..2.0f,
+                        colors = SliderDefaults.colors(thumbColor = AccentBlue, activeTrackColor = AccentBlue.copy(alpha = 0.5f))
+                    )
+                }
             }
 
             // ─── Visual Engine ───

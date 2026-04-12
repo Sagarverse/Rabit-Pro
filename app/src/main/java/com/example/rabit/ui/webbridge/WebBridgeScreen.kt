@@ -188,19 +188,15 @@ fun WebBridgeScreen(
                 val gatewayBaseUrl = "https://zoom-sagar.web.app"
                 val p2pUrl = if (!peerId.isNullOrEmpty() && !p2pStatus.contains("Safe Mode")) "$gatewayBaseUrl/?peer=$peerId" else gatewayBaseUrl
                 
+                // Status indicator for P2P state
                 if (p2pStatus.contains("Safe Mode")) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
-                        color = ErrorRed.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, ErrorRed.copy(alpha = 0.4f))
-                    ) {
-                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CloudOff, null, tint = ErrorRed)
-                            Spacer(Modifier.width(16.dp))
-                            Text("Safe Mode: Cloud Features Disabled\n(Missing google-services.json)", color = Platinum, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
+                    Text(
+                        "Cloud Connectivity: Safe Mode (Local Only)",
+                        color = Silver.copy(alpha = 0.5f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
                 }
                 
                 // Passcode Card (Premium Glass)

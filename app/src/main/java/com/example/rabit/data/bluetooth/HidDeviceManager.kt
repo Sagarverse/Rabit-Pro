@@ -271,6 +271,24 @@ class HidDeviceManager private constructor(private val context: Context) {
         }
     }
 
+    fun sendKeyCombination(codes: List<Byte>) {
+        scope.launch {
+            val modifiersSet = listOf(
+                com.example.rabit.domain.model.HidKeyCodes.MODIFIER_LEFT_CTRL,
+                com.example.rabit.domain.model.HidKeyCodes.MODIFIER_LEFT_SHIFT,
+                com.example.rabit.domain.model.HidKeyCodes.MODIFIER_LEFT_ALT,
+                com.example.rabit.domain.model.HidKeyCodes.MODIFIER_LEFT_GUI
+            )
+            val modifiers = codes.filter { it in modifiersSet }
+            val mainKey = codes.firstOrNull { it !in modifiersSet } ?: (0x00).toByte()
+            
+            var combinedMod: Byte = 0
+            modifiers.forEach { combinedMod = combinedMod or it }
+            
+            sendKeyPress(mainKey, combinedMod, useSticky = false)
+        }
+    }
+
     fun sendConsumerKey(usageId: Short) {
         val report = ByteArray(2).apply {
             this[0] = (usageId.toInt() and 0xFF).toByte()

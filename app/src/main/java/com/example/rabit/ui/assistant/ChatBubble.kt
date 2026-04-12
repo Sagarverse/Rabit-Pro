@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
@@ -186,16 +187,18 @@ fun ChatBubble(message: ChatMessage, viewModel: AssistantViewModel, mainViewMode
                             }
                         }
 
-                        // Message content
-                        com.example.rabit.ui.components.MarkdownText(
-                            text = if (isError) message.content.removePrefix("Error: ") else message.content,
-                            color = when {
-                                isUser -> Color.White
-                                isError -> ErrorRed.copy(alpha = 0.9f)
-                                else -> Platinum
-                            },
-                            fontSize = 15f
-                        )
+                        // Message content with selection support
+                        SelectionContainer {
+                            com.example.rabit.ui.components.MarkdownText(
+                                text = if (isError) message.content.removePrefix("Error: ") else message.content,
+                                color = when {
+                                    isUser -> Color.White
+                                    isError -> ErrorRed.copy(alpha = 0.9f)
+                                    else -> Platinum
+                                },
+                                fontSize = 15f
+                            )
+                        }
 
                         // Action Row for AI responses
                         if (!isUser && message.content.isNotBlank() && !isError) {
@@ -248,39 +251,6 @@ fun ChatBubble(message: ChatMessage, viewModel: AssistantViewModel, mainViewMode
                                         mainViewModel.sendText(message.content)
                                     }
                                 )
-                                // Feedback Row
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Surface(
-                                        onClick = { feedbackState = if (feedbackState == 1) 0 else 1 },
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (feedbackState == 1) Platinum.copy(alpha = 0.2f) else SoftGrey.copy(alpha = 0.25f),
-                                        modifier = Modifier.height(28.dp).width(36.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                Icons.Default.ThumbUp,
-                                                contentDescription = "Like",
-                                                tint = if (feedbackState == 1) Platinum else Silver.copy(alpha = 0.6f),
-                                                modifier = Modifier.size(13.dp)
-                                            )
-                                        }
-                                    }
-                                    Surface(
-                                        onClick = { feedbackState = if (feedbackState == -1) 0 else -1 },
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = if (feedbackState == -1) ErrorRed.copy(alpha = 0.2f) else SoftGrey.copy(alpha = 0.25f),
-                                        modifier = Modifier.height(28.dp).width(36.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                Icons.Default.ThumbDown,
-                                                contentDescription = "Dislike",
-                                                tint = if (feedbackState == -1) ErrorRed else Silver.copy(alpha = 0.6f),
-                                                modifier = Modifier.size(13.dp)
-                                            )
-                                        }
-                                    }
-                                }
                                 // Share
                                 ActionPill(
                                     icon = Icons.Default.Share,

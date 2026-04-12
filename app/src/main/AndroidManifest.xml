@@ -112,6 +112,28 @@
             </intent-filter>
         </service>
 
+        <service
+            android:name=".data.bluetooth.LockMacTile"
+            android:label="Lock Mac"
+            android:icon="@android:drawable/ic_lock_lock"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".data.bluetooth.SleepMacTile"
+            android:label="Sleep Mac"
+            android:icon="@android:drawable/ic_lock_power_off"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- Feature 5: File Provider for Camera capture -->
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -20,6 +20,7 @@ import com.example.rabit.data.gemini.LocalLlmManager
 import com.example.rabit.data.sensors.SpatialPointerManager
 import com.example.rabit.data.voice.VoiceAssistantManager
 import com.example.rabit.data.voice.VoiceState
+import android.bluetooth.BluetoothManager
 import com.example.rabit.domain.model.HidKeyCodes
 import com.example.rabit.domain.model.Workstation
 import com.example.rabit.domain.model.RemoteFile
@@ -87,9 +88,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _webBridgePin = MutableStateFlow(RabitNetworkServer.currentPin)
     val webBridgePin: StateFlow<String> = _webBridgePin.asStateFlow()
 
-    // Vibration toggle
+    // Vibration toggle & Presets
     private val _vibrationEnabled = MutableStateFlow(prefs.getBoolean("vibration_enabled", true))
     val vibrationEnabled = _vibrationEnabled.asStateFlow()
+
+    private val _hapticPreset = MutableStateFlow(prefs.getString("haptic_preset", "Mechanical") ?: "Mechanical")
+    val hapticPreset = _hapticPreset.asStateFlow()
+
+    fun setHapticPreset(preset: String) {
+        _hapticPreset.value = preset
+        prefs.edit().putString("haptic_preset", preset).apply()
+        performHapticFeedback(preset)
+    }
+
+    private fun performHapticFeedback(preset: String) {
+        if (!_vibrationEnabled.value) return
+        viewModelScope.launch {
+            val vibrator = getApplication<Application>().getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+            if (vibrator.hasVibrator()) {
+                when (preset) {
+                    "Soft" -> vibrator.vibrate(android.os.VibrationEffect.createOneShot(10, 50))
+                    "Mechanical" -> vibrator.vibrate(android.os.VibrationEffect.createOneShot(25, 180))
+                    "Sharp" -> vibrator.vibrate(android.os.VibrationEffect.createOneShot(40, 255))
+                }
+            }
+        }
+    }
 
     // Trackpad sensitivity (0.5f to 3.0f)
     private val _trackpadSensitivity = MutableStateFlow(prefs.getFloat("trackpad_sensitivity", 1.5f))
@@ -108,6 +132,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _savedDevices = MutableStateFlow<List<SavedDevice>>(emptyList())
     val savedDevices = _savedDevices.asStateFlow()
+
+    // Voice & Speech Engine
+    private val _ttsPitch = MutableStateFlow(prefs.getFloat("tts_pitch", 1.0f))
+    val ttsPitch = _ttsPitch.asStateFlow()
+
+    private val _ttsSpeechRate = MutableStateFlow(prefs.getFloat("tts_speech_rate", 1.0f))
+    val ttsSpeechRate = _ttsSpeechRate.asStateFlow()
+
+    fun setTtsPitch(value: Float) {
+        _ttsPitch.value = value
+        prefs.edit().putFloat("tts_pitch", value).apply()
+    }
+
+    fun setTtsSpeechRate(value: Float) {
+        _ttsSpeechRate.value = value
+        prefs.edit().putFloat("tts_speech_rate", value).apply()
+    }
 
     // Voice
     val voiceState = voiceAssistantManager.state
@@ -135,6 +176,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _dynamicThemeEnabled = MutableStateFlow(prefs.getBoolean("dynamic_theme_enabled", true))
     val dynamicThemeEnabled = _dynamicThemeEnabled.asStateFlow()
 
+    private val _activeApp = MutableStateFlow<String?>(null)
+    val activeApp = _activeApp.asStateFlow()
+
     init {
         spatialPointerManager.onPointerUpdate = { dx, dy ->
             if (_airMouseEnabled.value) {
@@ -160,6 +204,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             webRtcManager.incomingDataFlow.collect { (type, data) ->
                 if (type == "METADATA") {
                     handleRemoteMetadata(data as String)
+                }
+                if (type == "ACTIVE_APP") {
+                    _activeApp.value = data as String
                 }
             }
         }
@@ -296,7 +343,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch {
                 delay(1000) // Give service time to start
                 _savedDevices.value.firstOrNull()?.let { device ->
-                    val bluetoothAdapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
+                    val bluetoothManager = getApplication<Application>().getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+                    val bluetoothAdapter = bluetoothManager.adapter
                     val bondedDevice = try {
                         bluetoothAdapter?.bondedDevices?.find { it.name == device.name }
                     } catch (e: Exception) { null }
@@ -386,7 +434,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun requestEnableBluetooth(context: Context) {
-        val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val bluetoothAdapter = bluetoothManager.adapter
         if (bluetoothAdapter != null && !bluetoothAdapter.isEnabled) {
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
             enableBtIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -405,12 +454,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun connectToWorkstation(workstation: com.example.rabit.domain.model.Workstation) {
-        // Find device in current scans or create a bounded placeholder
-        val adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
-        val device = adapter.getRemoteDevice(workstation.address)
-        repository.connectWithRetry(device, maxRetries = 3)
+        val bluetoothManager = getApplication<Application>().getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val adapter = bluetoothManager.adapter
+        val device = adapter?.getRemoteDevice(workstation.address)
+        if (device != null) {
+            repository.connectWithRetry(device, maxRetries = 3)
+        }
     }
+
     fun sendKey(keyCode: Byte) {
+        performHapticFeedback(_hapticPreset.value)
         repository.sendKey(keyCode, _activeModifiers.value)
     }
 

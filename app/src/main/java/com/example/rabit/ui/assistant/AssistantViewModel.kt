@@ -2,6 +2,7 @@ package com.example.rabit.ui.assistant
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.rabit.domain.model.gemini.GeminiRequest
@@ -52,6 +53,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     private val geminiRepo = GeminiRepositoryImpl()
     private val localLlmManager = LocalLlmManager(application)
     private val prefs = application.getSharedPreferences("gemini_prefs", Context.MODE_PRIVATE)
+    private val rabitPrefs = application.getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
 
     private val _uiState = MutableStateFlow<AssistantUiState>(AssistantUiState.Idle)
     val uiState: StateFlow<AssistantUiState> = _uiState
@@ -476,12 +478,43 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         startNewSession()
     }
 
+    fun exportChatHistory(context: Context) {
+        val messages = _messages.value
+        if (messages.isEmpty()) return
+        
+        val exportText = StringBuilder().apply {
+            append("--- Rabit Pro AI Chat Export ---\n")
+            append("Date: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())}\n\n")
+            messages.forEach { msg ->
+                val role = if (msg.isUser) "USER" else "AI"
+                append("[$role]: ${msg.content}\n\n")
+            }
+            append("--- End of Export ---")
+        }.toString()
+
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "Rabit Pro Chat History")
+            putExtra(Intent.EXTRA_TEXT, exportText)
+        }
+        val chooser = Intent.createChooser(intent, "Export History")
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(chooser)
+    }
+
     fun speakText(text: String) {
         if (_isSpeaking.value) {
             tts?.stop()
             _isSpeaking.value = false
             return
         }
+        
+        // Apply current settings
+        val pitch = rabitPrefs.getFloat("tts_pitch", 1.0f)
+        val rate = rabitPrefs.getFloat("tts_speech_rate", 1.0f)
+        tts?.setPitch(pitch)
+        tts?.setSpeechRate(rate)
+
         // Minimal cleanup for speaking nicely: remove markdown tokens
         val cleanText = text.replace(Regex("```[\\s\\S]*?```"), "Code Block.")
                             .replace(Regex("[*#`]"), "")

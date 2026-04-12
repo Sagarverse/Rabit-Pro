@@ -159,6 +159,22 @@ class HidService : Service() {
                 val text = intent.getStringExtra("text") ?: ""
                 showClipboardNotification(text)
             }
+            "LOCK_MAC" -> {
+                sendKey(HidKeyCodes.KEY_Q, (HidKeyCodes.MOD_LEFT_CONTROL or HidKeyCodes.MOD_LEFT_GUI).toByte())
+            }
+            "UNLOCK_MAC" -> {
+                val prefs = getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
+                val macPass = prefs.getString("mac_password", "") ?: ""
+                if (macPass.isNotEmpty()) {
+                    unlockMac(macPass)
+                } else {
+                    Toast.makeText(this, "Set Mac Password in Settings first", Toast.LENGTH_SHORT).show()
+                }
+            }
+            "STOP_APP" -> {
+                stopForeground(true)
+                stopSelf()
+            }
         }
         return START_STICKY
     }
@@ -236,6 +252,16 @@ class HidService : Service() {
             this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Remote Management Actions
+        val lockIntent = Intent(this, HidService::class.java).apply { action = "LOCK_MAC" }
+        val lockPending = PendingIntent.getService(this, 10, lockIntent, PendingIntent.FLAG_IMMUTABLE)
+
+        val unlockIntent = Intent(this, HidService::class.java).apply { action = "UNLOCK_MAC" }
+        val unlockPending = PendingIntent.getService(this, 11, unlockIntent, PendingIntent.FLAG_IMMUTABLE)
+
+        val stopIntent = Intent(this, HidService::class.java).apply { action = "STOP_APP" }
+        val stopPending = PendingIntent.getService(this, 12, stopIntent, PendingIntent.FLAG_IMMUTABLE)
+
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle("Rabit: $title")
             .setContentText(text)
@@ -243,6 +269,9 @@ class HidService : Service() {
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(android.R.drawable.ic_lock_lock, "Lock", lockPending)
+            .addAction(android.R.drawable.ic_lock_idle_lock, "Unlock", unlockPending)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Exit", stopPending)
             .build()
     }
 
