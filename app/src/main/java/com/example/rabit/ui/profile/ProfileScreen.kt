@@ -170,6 +170,35 @@ fun ProfileScreen(onBack: () -> Unit) {
                     }
                 }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                PremiumGlassCard(
+                    modifier = Modifier.fillMaxWidth(0.9f),
+                    backgroundColor = Color.White.copy(alpha = 0.03f)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("ALL FEATURES", color = Platinum, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+
+                        FeatureRow("Bluetooth HID keyboard + modifiers")
+                        FeatureRow("Trackpad and air-mouse controls")
+                        FeatureRow("AI assistant with auto-push typing")
+                        FeatureRow("Prompt templates, copy, and speak response")
+                        FeatureRow("Web Bridge with QR + secure PIN")
+                        FeatureRow("File sharing and universal clipboard sync")
+                        FeatureRow("URL handoff from Android share sheet")
+                        FeatureRow("Automation dashboard and custom macros")
+                        FeatureRow("Wake-on-LAN and SSH terminal tools")
+                        FeatureRow("Snippets and shortcuts guide")
+                        FeatureRow("Biometric lock, stealth mode, auto reconnect")
+                        FeatureRow("Shake-to-disconnect and haptic presets")
+                        FeatureRow("Theme, voice settings, and feature visibility controls")
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(40.dp))
             }
         }
@@ -226,5 +255,14 @@ fun TransparentSocialButton(
         Icon(icon, contentDescription = label, tint = Platinum, modifier = Modifier.size(28.dp))
         Spacer(modifier = Modifier.height(6.dp))
         Text(label, color = Silver, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun FeatureRow(text: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Text("•", color = AccentBlue, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(text, color = Silver, fontSize = 13.sp, lineHeight = 18.sp)
     }
 }

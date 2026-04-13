@@ -467,6 +467,53 @@
             gap: 24px;
         }
 
+        .all-features {
+            margin-top: 48px;
+            padding: 28px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, rgba(249, 115, 22, 0.08), rgba(26, 26, 37, 0.92));
+            border: 1px solid var(--border);
+        }
+
+        .all-features h3 {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .all-features p {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+        }
+
+        .all-features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+            gap: 18px;
+        }
+
+        .all-features-col {
+            background: rgba(18, 18, 26, 0.8);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .all-features-col h4 {
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--accent-light);
+            margin-bottom: 8px;
+        }
+
+        .all-features-col ul {
+            padding-left: 18px;
+            color: var(--text-secondary);
+            display: grid;
+            gap: 6px;
+            font-size: 14px;
+        }
+
         .feature-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -971,7 +1018,9 @@
             <div class="logo">Rabbit</div>
             <ul class="nav-links">
                 <li><a href="#features">Features</a></li>
+                <li><a href="#all-features">All Features</a></li>
                 <li><a href="#how-it-works">How It Works</a></li>
+                <li><a href="usage-guide.html">Usage Guide</a></li>
                 <li><a href="#testimonials">Reviews</a></li>
                 <li><a href="#developer">Developer</a></li>
                 <li><a href="#faq">FAQ</a></li>
@@ -991,6 +1040,7 @@
                 <p>Transform your Android phone into a wireless keyboard & mouse with built-in AI. Copy any text, let AI type it anywhere, and more.</p>
                 <div class="hero-cta">
                     <a href="https://github.com/Sagarverse/Rabit-Pro/releases" target="_blank" class="btn btn-primary">Download for Android</a>
+                    <a href="usage-guide.html" class="btn btn-secondary">Detailed Usage Guide</a>
                     <a href="#how-it-works" class="btn btn-secondary">See How It Works</a>
                 </div>
                 <div class="android-badge" style="margin-top: 16px; justify-content: center;">
@@ -1077,13 +1127,13 @@
                 <div class="feature-card ai-feature">
                     <div class="feature-icon">🤖</div>
                     <h3>AI Ask & Type</h3>
-                    <p>Ask AI anything and get typed responses instantly. AI understands your questions and types intelligent answers directly into any app.</p>
+                    <p>Ask AI for drafts, summaries, and edits, then type the result directly on your connected target with one tap.</p>
                 </div>
                 
                 <div class="feature-card ai-feature">
                     <div class="feature-icon">✨</div>
                     <h3>AI Text Enhancement</h3>
-                    <p>Let AI rewrite, summarize, or improve your text before typing. Perfect emails, messages, and documents in seconds.</p>
+                    <p>Rewrite, summarize, expand, or change tone before typing. Useful for emails, messages, and technical notes.</p>
                 </div>
                 
                 <div class="feature-card ai-feature">
@@ -1115,6 +1165,18 @@
                     <h3>Auto Clipboard Sync</h3>
                     <p>Anything you copy is automatically pushed and typed to your connected Mac or Android device instantly.</p>
                 </div>
+
+                <div class="feature-card ai-feature">
+                    <div class="feature-icon">🔗</div>
+                    <h3>URL Handoff</h3>
+                    <p>Share a link from Android to Rabit and open it quickly on your connected Mac with a keyboard macro flow.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">⚙️</div>
+                    <h3>Automation Toolkit</h3>
+                    <p>Use built-in modules like Wake-on-LAN and SSH terminal for your own devices and productivity workflows.</p>
+                </div>
                 
                 <div class="feature-card">
                     <div class="feature-icon">🖱️</div>
@@ -1132,6 +1194,73 @@
                     <div class="feature-icon">📱💻</div>
                     <h3>Mac & Android Only</h3>
                     <p>Optimized for Mac computers and Android devices. Deep integration for the best wireless keyboard experience.</p>
+                </div>
+            </div>
+
+            <div class="all-features" id="all-features">
+                <h3>All Features in Rabit</h3>
+                <p>Complete feature inventory from the current app build.</p>
+                <div class="all-features-grid">
+                    <div class="all-features-col">
+                        <h4>Input Control</h4>
+                        <ul>
+                            <li>Bluetooth HID keyboard typing</li>
+                            <li>Modifier combos and system keys</li>
+                            <li>Trackpad mode</li>
+                            <li>Air mouse controls</li>
+                            <li>Batch typing</li>
+                        </ul>
+                    </div>
+                    <div class="all-features-col">
+                        <h4>AI Tools</h4>
+                        <ul>
+                            <li>AI assistant chat</li>
+                            <li>Prompt templates</li>
+                            <li>Auto-push AI output</li>
+                            <li>Copy and speak AI responses</li>
+                            <li>Voice input workflow</li>
+                        </ul>
+                    </div>
+                    <div class="all-features-col">
+                        <h4>Bridge & Sync</h4>
+                        <ul>
+                            <li>Web Bridge server</li>
+                            <li>QR + PIN access</li>
+                            <li>File sharing over bridge</li>
+                            <li>Universal clipboard sync</li>
+                            <li>URL handoff from share sheet</li>
+                        </ul>
+                    </div>
+                    <div class="all-features-col">
+                        <h4>Automation</h4>
+                        <ul>
+                            <li>Automation dashboard</li>
+                            <li>System and browser macros</li>
+                            <li>User custom macros</li>
+                            <li>Wake-on-LAN tool</li>
+                            <li>SSH terminal tool</li>
+                        </ul>
+                    </div>
+                    <div class="all-features-col">
+                        <h4>Security & Personalization</h4>
+                        <ul>
+                            <li>Biometric lock</li>
+                            <li>Stealth history mode</li>
+                            <li>Auto reconnect</li>
+                            <li>Shake to disconnect</li>
+                            <li>Theme and haptic presets</li>
+                        </ul>
+                    </div>
+                    <div class="all-features-col">
+                        <h4>Utilities</h4>
+                        <ul>
+                            <li>Snippets screen</li>
+                            <li>Shortcuts guide</li>
+                            <li>Settings and customization</li>
+                            <li>Profile screen</li>
+                            <li>Onboarding and pairing flow</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1165,10 +1294,13 @@
                 <div class="step">
                     <div class="step-number">3</div>
                     <div class="step-content">
-                        <h3>Type with AI Superpowers</h3>
-                        <p>Use AI Copy & Type to grab any text and have Rabbit type it anywhere. Or enhance your writing with AI suggestions.</p>
+                        <h3>Use Assistant, Handoff, and Automation</h3>
+                        <p>Generate text with AI, hand off links from your phone to Mac, and run trusted automation tools from one app.</p>
                     </div>
                 </div>
+            </div>
+            <div style="text-align: center; margin-top: 32px;">
+                <a href="usage-guide.html" class="btn btn-secondary">Read Full Step-by-Step Guide</a>
             </div>
         </div>
     </section>

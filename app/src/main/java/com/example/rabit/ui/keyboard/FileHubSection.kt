@@ -147,7 +147,7 @@ fun FileHubSection(
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
-                        Text("WEB BRIDGE", color = Platinum, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("WEB SHARE", color = Platinum, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text("Manage file transfers & streaming", color = Silver, fontSize = 10.sp)
                     }
                 }

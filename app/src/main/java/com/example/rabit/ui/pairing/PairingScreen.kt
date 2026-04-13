@@ -47,7 +47,8 @@ fun PairingScreen(
     onConnected: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToAssistant: () -> Unit,
-    onNavigateToWebBridge: () -> Unit
+    onNavigateToWebBridge: () -> Unit,
+    onNavigateToInjector: () -> Unit
 ) {
     val scannedDevices by viewModel.scannedDevices.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()
@@ -172,7 +173,7 @@ fun PairingScreen(
                 )
 
                 NavigationDrawerItem(
-                    label = { Text("Web Bridge", fontWeight = FontWeight.SemiBold) },
+                    label = { Text("Web Share", fontWeight = FontWeight.SemiBold) },
                     selected = false,
                     onClick = { 
                         scope.launch { drawerState.close() }
@@ -191,6 +192,18 @@ fun PairingScreen(
                         onNavigateToAssistant()
                     },
                     icon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, unselectedIconColor = Silver, unselectedTextColor = Silver)
+                )
+
+                NavigationDrawerItem(
+                    label = { Text("Payload Injector", fontWeight = FontWeight.SemiBold) },
+                    selected = false,
+                    onClick = { 
+                        scope.launch { drawerState.close() }
+                        onNavigateToInjector()
+                    },
+                    icon = { Icon(Icons.Default.ElectricBolt, contentDescription = null) },
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, unselectedIconColor = Silver, unselectedTextColor = Silver)
                 )

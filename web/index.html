@@ -154,6 +154,35 @@
             border: 1px solid var(--border);
         }
 
+        .upload-box {
+            padding: 14px;
+            border: 1px dashed var(--border);
+            border-radius: 14px;
+            margin-bottom: 12px;
+            background: rgba(255, 255, 255, 0.02);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .upload-progress {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 999px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .upload-progress > div {
+            height: 100%;
+            width: 0%;
+            background: var(--accent-blue);
+            transition: width 0.12s linear;
+        }
+
         .footer {
             margin-top: 40px;
             font-size: 10px;
@@ -189,9 +218,30 @@
         </div>
 
         <div class="file-list" id="file-hub">
-            <p class="subtitle" style="margin-bottom: 16px;">Available Files on Phone</p>
-            <div id="items">
-                <!-- Dynamic File Items -->
+            <div class="upload-box">
+                <div style="text-align:left; min-width:220px;">
+                    <div style="font-size:13px; font-weight:700;">Send Files From Mac To Phone</div>
+                    <div style="font-size:11px; opacity:0.6; margin-top:4px;">Files are received in phone Downloads/Rabit.</div>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <input id="mac-upload-input" type="file" multiple style="display:none;" />
+                    <button id="send-files-btn" style="padding:10px 14px; font-size:12px; border:1px solid var(--accent-blue); background:transparent; color:var(--accent-blue); border-radius:10px;">Choose & Send</button>
+                </div>
+                <div id="upload-status" style="font-size:12px; opacity:0.75; width:100%;">No upload in progress.</div>
+                <div class="upload-progress" id="upload-progress"><div id="upload-progress-fill"></div></div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:16px; flex-wrap:wrap;">
+                <p class="subtitle" style="margin:0;">Available Files on Phone</p>
+                <div style="display:flex; gap:8px;">
+                    <button id="refresh-files-btn" style="padding:10px 14px; font-size:12px; border:1px solid var(--border); background:transparent; color:var(--platinum); border-radius:10px;">Refresh</button>
+                    <button id="disconnect-btn" style="padding:10px 14px; font-size:12px; border:1px solid rgba(255,69,58,0.5); background:transparent; color:#FF453A; border-radius:10px;">Disconnect</button>
+                </div>
+            </div>
+            <div id="files-status" style="font-size:12px; opacity:0.7; margin-bottom:10px; display:none;">Loading files...</div>
+            <div id="download-action" style="display:none; margin-bottom:10px;"></div>
+            <div id="items" style="display:flex; flex-direction:column; gap:12px;">
+                <div style="opacity:0.6; font-size:13px;">Connect and tap Refresh to load files from phone.</div>
             </div>
         </div>
     </div>
@@ -200,15 +250,17 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, doc, setDoc, onSnapshot, updateDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, onSnapshot, arrayUnion } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         // Firebase Configuration (Using defaults from Hosting context)
         // These will be automatically populated if deployed to Firebase Hosting, 
         // but for local dev, we use placeholders that the user can replace.
         const firebaseConfig = {
-            storageBucket: "zoom-sagar.appspot.com",
-            projectId: "zoom-sagar",
-            appId: "1:262319086300:web:86f6a9c1e7c5b967f1307b"
+            apiKey: "AIzaSyCx94w37hKmOtbll12fVGvriNhsuLPa1D4",
+            authDomain: "rabit-260412-183123.firebaseapp.com",
+            projectId: "rabit-260412-183123",
+            storageBucket: "rabit-260412-183123.firebasestorage.app",
+            appId: "1:874553037524:web:cb4288f5f8fce9ca486141"
         };
 
         const app = initializeApp(firebaseConfig);
@@ -224,6 +276,448 @@
 
         let pc = null;
         let dataChannel = null;
+        let signalUnsub = null;
+        let connectTimeout = null;
+        let isConnecting = false;
+        let fileListTimeout = null;
+        let remoteFiles = [];
+        let activeDownload = null;
+        let downloadInactivityTimer = null;
+        let downloadAckTimer = null;
+        let pendingDownloadRequestId = null;
+
+        const filesStatus = document.getElementById('files-status');
+        const filesContainer = document.getElementById('items');
+        const refreshFilesBtn = document.getElementById('refresh-files-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const sendFilesBtn = document.getElementById('send-files-btn');
+        const uploadInput = document.getElementById('mac-upload-input');
+        const uploadStatus = document.getElementById('upload-status');
+        const uploadProgress = document.getElementById('upload-progress');
+        const uploadProgressFill = document.getElementById('upload-progress-fill');
+        const downloadAction = document.getElementById('download-action');
+
+        let isUploading = false;
+        let downloadChunkCount = 0;
+
+        function humanizeFirebaseError(err) {
+            const code = err?.code || "";
+            const msg = err?.message || "";
+            if (code.includes("permission-denied")) return "Firestore permission denied for signaling.";
+            if (code.includes("unauthenticated")) return "Firestore auth required for signaling.";
+            if (code.includes("unavailable")) return "Firestore unavailable. Check internet/firewall.";
+            if (code.includes("failed-precondition") || msg.toLowerCase().includes("firestore api")) {
+                return "Firestore API disabled for project. Enable firestore.googleapis.com.";
+            }
+            return msg || "Unknown Firebase signaling error.";
+        }
+
+        function withTimeout(promise, ms, label) {
+            let timer = null;
+            const timeoutPromise = new Promise((_, reject) => {
+                timer = setTimeout(() => reject(new Error(label)), ms);
+            });
+            return Promise.race([promise, timeoutPromise]).finally(() => {
+                if (timer) clearTimeout(timer);
+            });
+        }
+
+        function formatSize(bytes) {
+            if (!Number.isFinite(bytes) || bytes < 0) return "Unknown";
+            if (bytes < 1024) return `${bytes} B`;
+            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+            if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+            return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+        }
+
+        function showFilesStatus(text, isError = false) {
+            filesStatus.style.display = "block";
+            filesStatus.innerText = text;
+            filesStatus.style.color = isError ? "#FF453A" : "rgba(255,255,255,0.7)";
+        }
+
+        function clearDownloadAction() {
+            downloadAction.style.display = "none";
+            downloadAction.innerHTML = "";
+        }
+
+        function showUploadStatus(text, isError = false) {
+            uploadStatus.innerText = text;
+            uploadStatus.style.color = isError ? "#FF453A" : "rgba(255,255,255,0.75)";
+        }
+
+        function setUploadProgress(pct) {
+            const clamped = Math.max(0, Math.min(100, pct));
+            uploadProgress.style.display = clamped > 0 && clamped < 100 ? "block" : "none";
+            uploadProgressFill.style.width = `${clamped}%`;
+        }
+
+        function renderFiles(items) {
+            if (!items || !items.length) {
+                filesContainer.innerHTML = '<div style="opacity:0.6; font-size:13px;">No files available from phone.</div>';
+                return;
+            }
+
+            filesContainer.innerHTML = items.map((f) => {
+                const name = f.name || "Unnamed file";
+                const size = formatSize(Number(f.size || 0));
+                const ext = (f.extension || "").toString().trim();
+                const kind = f.isFolder ? "Folder" : (ext ? `${ext.toUpperCase()} file` : "File");
+                const path = encodeURIComponent(f.path || "");
+
+                return `
+                    <div class="file-item">
+                        <div>
+                            <p style="font-weight: bold; font-size: 14px;">${name}</p>
+                            <p style="font-size: 11px; opacity: 0.5;">${kind} • ${size}</p>
+                        </div>
+                        <button class="remote-download-btn" data-path="${path}" style="padding: 8px 16px; font-size: 12px; background: transparent; border: 1px solid var(--accent-blue); color: var(--accent-blue); border-radius: 8px;">Download</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function requestFileList() {
+            if (!dataChannel || dataChannel.readyState !== "open") {
+                showFilesStatus("Bridge channel not ready. Reconnect and try again.", true);
+                return;
+            }
+
+            showFilesStatus("Requesting files from phone...");
+            clearDownloadAction();
+            if (fileListTimeout) clearTimeout(fileListTimeout);
+            fileListTimeout = setTimeout(() => {
+                showFilesStatus("Phone did not return files. Tap Refresh again.", true);
+            }, 8000);
+
+            dataChannel.send(JSON.stringify({ type: "LIST_FILES", path: "/" }));
+        }
+
+        window.requestRemoteDownload = function(path) {
+            if (!path) return;
+            if (!dataChannel || dataChannel.readyState !== "open") {
+                showFilesStatus("Bridge channel not ready for download request.", true);
+                return;
+            }
+            if (activeDownload) {
+                showFilesStatus("Another download is in progress. Please wait.", true);
+                return;
+            }
+            clearDownloadAction();
+            downloadChunkCount = 0;
+            const requestId = `dl-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            pendingDownloadRequestId = requestId;
+            dataChannel.send(JSON.stringify({ type: "DOWNLOAD_FILE", path, requestId }));
+            showFilesStatus("Download request sent to phone. Waiting for acknowledgement...");
+
+            if (downloadAckTimer) clearTimeout(downloadAckTimer);
+            downloadAckTimer = setTimeout(() => {
+                if (pendingDownloadRequestId === requestId) {
+                    pendingDownloadRequestId = null;
+                    showFilesStatus("Phone did not acknowledge download request. Try again.", true);
+                }
+            }, 5000);
+        }
+
+        function encodeChunkToBase64(u8) {
+            let binary = "";
+            const step = 0x2000;
+            for (let i = 0; i < u8.length; i += step) {
+                const slice = u8.subarray(i, i + step);
+                binary += String.fromCharCode.apply(null, slice);
+            }
+            return btoa(binary);
+        }
+
+        async function sendFilesToPhone(fileList) {
+            if (!fileList || !fileList.length) return;
+            if (!dataChannel || dataChannel.readyState !== "open") {
+                showUploadStatus("Bridge not connected. Connect first.", true);
+                return;
+            }
+            if (isUploading) {
+                showUploadStatus("Another upload is in progress.", true);
+                return;
+            }
+
+            isUploading = true;
+            sendFilesBtn.disabled = true;
+
+            try {
+                const files = Array.from(fileList);
+                for (let fi = 0; fi < files.length; fi++) {
+                    const file = files[fi];
+                    const transferId = `up-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+                    showUploadStatus(`Uploading ${file.name} (${fi + 1}/${files.length})...`);
+                    setUploadProgress(1);
+
+                    dataChannel.send(JSON.stringify({
+                        type: "UPLOAD_START",
+                        transferId,
+                        fileName: file.name,
+                        mimeType: file.type || "application/octet-stream",
+                        sizeBytes: file.size || 0
+                    }));
+
+                    const bytes = new Uint8Array(await file.arrayBuffer());
+                    const chunkSize = 3 * 1024;
+                    let sent = 0;
+
+                    while (sent < bytes.length) {
+                        while (dataChannel.bufferedAmount > 512 * 1024) {
+                            await new Promise((r) => setTimeout(r, 16));
+                        }
+
+                        const part = bytes.subarray(sent, Math.min(sent + chunkSize, bytes.length));
+                        dataChannel.send(JSON.stringify({
+                            type: "UPLOAD_CHUNK",
+                            transferId,
+                            dataBase64: encodeChunkToBase64(part)
+                        }));
+
+                        sent += part.length;
+                        const pct = bytes.length > 0 ? (sent / bytes.length) * 100 : 100;
+                        setUploadProgress(pct);
+                    }
+
+                    dataChannel.send(JSON.stringify({ type: "UPLOAD_END", transferId }));
+                    setUploadProgress(100);
+                    showUploadStatus(`Uploaded ${file.name}. Waiting for phone save...`);
+                    await new Promise((r) => setTimeout(r, 250));
+                }
+
+                showUploadStatus("Upload finished. Syncing available files...");
+                setTimeout(() => requestFileList(), 250);
+            } catch (err) {
+                console.error(err);
+                showUploadStatus("Upload failed while sending chunks.", true);
+            } finally {
+                isUploading = false;
+                sendFilesBtn.disabled = false;
+                setTimeout(() => setUploadProgress(0), 800);
+                uploadInput.value = "";
+            }
+        }
+
+        async function handleBinaryPayload(binaryData) {
+            if (!activeDownload) return;
+
+            let bytes = null;
+            if (binaryData instanceof ArrayBuffer) {
+                bytes = new Uint8Array(binaryData);
+            } else if (binaryData instanceof Blob) {
+                bytes = new Uint8Array(await binaryData.arrayBuffer());
+            } else {
+                return;
+            }
+
+            activeDownload.chunks.push(bytes);
+            activeDownload.bytesReceived += bytes.byteLength;
+            downloadChunkCount += 1;
+
+            if (downloadInactivityTimer) clearTimeout(downloadInactivityTimer);
+            downloadInactivityTimer = setTimeout(() => {
+                if (!activeDownload) return;
+                const expected = Number(activeDownload.sizeBytes || 0);
+                if (activeDownload.bytesReceived > 0 && (expected === 0 || activeDownload.bytesReceived >= expected)) {
+                    finalizeDownload();
+                }
+            }, 1800);
+
+            const expected = activeDownload.sizeBytes || 0;
+            if (expected > 0) {
+                const pct = Math.min(100, (activeDownload.bytesReceived / expected) * 100).toFixed(1);
+                    showFilesStatus(`Downloading ${activeDownload.name}... ${pct}% (${downloadChunkCount} chunks)`);
+            } else {
+                    showFilesStatus(`Downloading ${activeDownload.name}... ${formatSize(activeDownload.bytesReceived)} (${downloadChunkCount} chunks)`);
+            }
+        }
+
+        function finalizeDownload() {
+            if (!activeDownload) return;
+
+            if (downloadInactivityTimer) {
+                clearTimeout(downloadInactivityTimer);
+                downloadInactivityTimer = null;
+            }
+
+            const blob = new Blob(activeDownload.chunks, {
+                type: activeDownload.mimeType || "application/octet-stream"
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = activeDownload.name || "rabit-file";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            // Revoke after a delay to avoid race with browser download start.
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+
+            // Always show a manual save fallback in case auto-download is blocked by browser policy.
+            const manualName = activeDownload.name || "rabit-file";
+            downloadAction.style.display = "block";
+            downloadAction.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <span style="font-size:12px; opacity:0.8;">If download didn't start automatically:</span>
+                    <a href="${url}" download="${manualName}" style="padding:8px 12px; border:1px solid var(--accent-blue); border-radius:8px; color:var(--accent-blue); text-decoration:none; font-size:12px; font-weight:700;">Save file now</a>
+                </div>
+            `;
+
+            showFilesStatus(`Download complete: ${activeDownload.name} (${formatSize(activeDownload.bytesReceived)})`);
+            activeDownload = null;
+        }
+
+        function handleDataPayload(payload) {
+            let json = null;
+            try {
+                json = JSON.parse(payload);
+            } catch (_) {
+                return;
+            }
+
+            if (json.type === "FILE_LIST") {
+                if (fileListTimeout) {
+                    clearTimeout(fileListTimeout);
+                    fileListTimeout = null;
+                }
+                remoteFiles = Array.isArray(json.files) ? json.files : [];
+                showFilesStatus(`Loaded ${remoteFiles.length} item(s) from phone.`);
+                renderFiles(remoteFiles);
+                return;
+            }
+
+            if (json.type === "FILE_DOWNLOAD_START") {
+                if (downloadAckTimer) {
+                    clearTimeout(downloadAckTimer);
+                    downloadAckTimer = null;
+                }
+                pendingDownloadRequestId = null;
+                activeDownload = {
+                    transferId: json.transferId || "download",
+                    name: json.name || "rabit-file",
+                    sizeBytes: Number(json.sizeBytes || 0),
+                    mimeType: json.mimeType || "application/octet-stream",
+                    chunks: [],
+                    bytesReceived: 0
+                };
+                downloadChunkCount = 0;
+                clearDownloadAction();
+                showFilesStatus(`Starting download: ${activeDownload.name}`);
+                return;
+            }
+
+            if (json.type === "FILE_DOWNLOAD_ACK") {
+                if (json.requestId && pendingDownloadRequestId && json.requestId !== pendingDownloadRequestId) {
+                    return;
+                }
+                if (downloadAckTimer) {
+                    clearTimeout(downloadAckTimer);
+                    downloadAckTimer = null;
+                }
+                pendingDownloadRequestId = null;
+                if (json.accepted === false) {
+                    showFilesStatus(json.message || "Phone rejected download request.", true);
+                    return;
+                }
+                showFilesStatus("Phone acknowledged request. Preparing stream...");
+                return;
+            }
+
+            if (json.type === "FILE_DOWNLOAD_PROGRESS") {
+                if (!activeDownload) return;
+                const sent = Number(json.bytesSent || activeDownload.bytesReceived);
+                const total = Number(json.sizeBytes || activeDownload.sizeBytes || 0);
+                if (total > 0) {
+                    const pct = Math.min(100, (sent / total) * 100).toFixed(1);
+                    showFilesStatus(`Downloading ${activeDownload.name}... ${pct}%`);
+                }
+                return;
+            }
+
+            if (json.type === "FILE_DOWNLOAD_CHUNK") {
+                if (!activeDownload) return;
+                if (json.transferId && activeDownload.transferId && json.transferId !== activeDownload.transferId) return;
+                const b64 = json.dataBase64 || "";
+                if (!b64) return;
+                const raw = atob(b64);
+                const bytes = new Uint8Array(raw.length);
+                for (let i = 0; i < raw.length; i++) {
+                    bytes[i] = raw.charCodeAt(i);
+                }
+                activeDownload.chunks.push(bytes);
+                activeDownload.bytesReceived += bytes.byteLength;
+                downloadChunkCount += 1;
+
+                if (downloadInactivityTimer) clearTimeout(downloadInactivityTimer);
+                downloadInactivityTimer = setTimeout(() => {
+                    if (!activeDownload) return;
+                    const expected = Number(activeDownload.sizeBytes || 0);
+                    if (activeDownload.bytesReceived > 0 && (expected === 0 || activeDownload.bytesReceived >= expected)) {
+                        finalizeDownload();
+                    }
+                }, 1800);
+
+                const total = activeDownload.sizeBytes || 0;
+                if (total > 0) {
+                    const pct = Math.min(100, (activeDownload.bytesReceived / total) * 100).toFixed(1);
+                    showFilesStatus(`Downloading ${activeDownload.name}... ${pct}% (${downloadChunkCount} chunks)`);
+                }
+                return;
+            }
+
+            if (json.type === "FILE_DOWNLOAD_END") {
+                if (downloadInactivityTimer) {
+                    clearTimeout(downloadInactivityTimer);
+                    downloadInactivityTimer = null;
+                }
+                finalizeDownload();
+                return;
+            }
+
+            if (json.type === "ERROR") {
+                showFilesStatus(json.message || "Phone returned an error.", true);
+                activeDownload = null;
+                clearDownloadAction();
+                if (downloadAckTimer) {
+                    clearTimeout(downloadAckTimer);
+                    downloadAckTimer = null;
+                }
+                pendingDownloadRequestId = null;
+                if (downloadInactivityTimer) {
+                    clearTimeout(downloadInactivityTimer);
+                    downloadInactivityTimer = null;
+                }
+                if (json.message && json.message.toLowerCase().includes("upload")) {
+                    showUploadStatus(json.message, true);
+                }
+                return;
+            }
+
+            if (json.type === "UPLOAD_ACK") {
+                showUploadStatus(`Phone accepted upload: ${json.fileName || "file"}`);
+                return;
+            }
+
+            if (json.type === "UPLOAD_PROGRESS") {
+                const r = Number(json.bytesReceived || 0);
+                const t = Number(json.sizeBytes || 0);
+                if (t > 0) {
+                    const pct = Math.min(100, (r / t) * 100);
+                    setUploadProgress(pct);
+                    showUploadStatus(`Phone receiving ${json.fileName || "file"}: ${pct.toFixed(1)}%`);
+                }
+                return;
+            }
+
+            if (json.type === "UPLOAD_DONE") {
+                setUploadProgress(100);
+                showUploadStatus(`Saved on phone: ${json.fileName || "file"}`);
+                setTimeout(() => requestFileList(), 100);
+                setTimeout(() => requestFileList(), 600);
+                return;
+            }
+        }
 
         window.savePeerId = function() {
             const manualId = document.getElementById('manual-peer-field').value.trim();
@@ -250,22 +744,77 @@
 
         init();
 
-        window.connect = async function() {
-            const pin = document.getElementById('pin-field').value;
-            if (pin.length !== 4) return alert("Please enter the 4-digit security PIN");
-
-            statusText.innerText = "Initializing Professional Secure Bridge...";
-            
+        async function checkSignalingReady() {
+            const probeRef = doc(db, "signals", "PROBE1");
             try {
-                await startHandshake();
-            } catch (e) {
-                console.error(e);
-                statusText.innerText = "Bridge Handshake Failed";
-                statusLight.style.background = "#FF453A";
+                await withTimeout(
+                    setDoc(probeRef, { probeAt: Date.now(), source: "web" }, { merge: true }),
+                    5000,
+                    "Signaling probe timed out."
+                );
+            } catch (err) {
+                throw new Error(humanizeFirebaseError(err));
             }
         }
 
+        window.connect = async function() {
+            if (isConnecting) return;
+            const pin = document.getElementById('pin-field').value;
+            if (pin.length !== 4) return alert("Please enter the 4-digit security PIN");
+
+            isConnecting = true;
+            statusText.innerText = "Initializing Professional Secure Bridge...";
+            statusLight.style.background = "#FFD60A";
+            statusLight.style.boxShadow = "0 0 10px #FFD60A";
+            
+            try {
+                statusText.innerText = "Checking signaling backend...";
+                await checkSignalingReady();
+                await startHandshake();
+            } catch (e) {
+                console.error(e);
+                statusText.innerText = e?.message || "Bridge Handshake Failed";
+                statusLight.style.background = "#FF453A";
+                statusLight.style.boxShadow = "0 0 10px #FF453A";
+            } finally {
+                isConnecting = false;
+            }
+        }
+
+        function cleanupHandshake() {
+            if (connectTimeout) {
+                clearTimeout(connectTimeout);
+                connectTimeout = null;
+            }
+            if (signalUnsub) {
+                signalUnsub();
+                signalUnsub = null;
+            }
+            if (fileListTimeout) {
+                clearTimeout(fileListTimeout);
+                fileListTimeout = null;
+            }
+            if (downloadInactivityTimer) {
+                clearTimeout(downloadInactivityTimer);
+                downloadInactivityTimer = null;
+            }
+            if (downloadAckTimer) {
+                clearTimeout(downloadAckTimer);
+                downloadAckTimer = null;
+            }
+            pendingDownloadRequestId = null;
+            clearDownloadAction();
+            if (pc) {
+                try { pc.close(); } catch (_) {}
+            }
+            pc = null;
+            dataChannel = null;
+        }
+
         async function startHandshake() {
+            cleanupHandshake();
+
+            statusText.innerText = "Initializing WebRTC engine...";
             pc = new RTCPeerConnection({
                 iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }]
             });
@@ -276,40 +825,74 @@
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
                     const signalRef = doc(db, "signals", peerId.toUpperCase());
-                    updateDoc(signalRef, {
+                    setDoc(signalRef, {
                         web_candidates: arrayUnion(JSON.stringify(event.candidate))
+                    }, { merge: true }).catch((err) => {
+                        console.error("Failed to publish web ICE candidate", err);
                     });
                 }
             };
 
+            statusText.innerText = "Creating secure bridge session...";
+
             // Create Offer
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
+            statusText.innerText = "Generating secure offer...";
+            const offer = await withTimeout(
+                pc.createOffer(),
+                7000,
+                "Offer generation timed out. Retry bridge setup."
+            );
+
+            statusText.innerText = "Preparing local session...";
+            await withTimeout(
+                pc.setLocalDescription(offer),
+                7000,
+                "Local session setup timed out."
+            );
 
             // Write Offer to Firestore
             const signalRef = doc(db, "signals", peerId.toUpperCase());
-            await setDoc(signalRef, {
-                web_offer: offer.sdp,
-                timestamp: Date.now()
-            });
+            statusText.innerText = "Publishing secure offer...";
+            try {
+                await withTimeout(
+                    setDoc(signalRef, {
+                        web_offer: offer.sdp,
+                        timestamp: Date.now()
+                    }, { merge: true }),
+                    7000,
+                    "Signaling publish timed out. Check internet or Firebase access."
+                );
+            } catch (err) {
+                throw new Error(humanizeFirebaseError(err));
+            }
 
-            statusText.innerText = "Awaiting Phone Authorization...";
+            statusText.innerText = "Awaiting phone response...";
+
+            // Fail fast instead of waiting indefinitely.
+            connectTimeout = setTimeout(() => {
+                if (pc && !pc.remoteDescription) {
+                    cleanupHandshake();
+                    statusText.innerText = "Phone did not respond. Verify P2P is ON and peer ID is correct.";
+                    statusLight.style.background = "#FF453A";
+                    statusLight.style.boxShadow = "0 0 10px #FF453A";
+                }
+            }, 15000);
 
             // Listen for Answer and Candidates from Phone
-            onSnapshot(signalRef, async (snapshot) => {
+            signalUnsub = onSnapshot(signalRef, async (snapshot) => {
                 const data = snapshot.data();
                 if (!data) return;
 
-                if (data.app_answer && !pc.remoteDescription) {
+                if (data.android_answer && !pc.remoteDescription) {
                     await pc.setRemoteDescription(new RTCSessionDescription({
                         type: 'answer',
-                        sdp: data.app_answer
+                        sdp: data.android_answer
                     }));
-                    statusText.innerText = "Identity Authenticated. Tunneling...";
+                    statusText.innerText = "Phone verified. Establishing data tunnel...";
                 }
 
-                if (data.app_candidates) {
-                    data.app_candidates.forEach(candStr => {
+                if (data.android_candidates) {
+                    data.android_candidates.forEach(candStr => {
                         const candidate = JSON.parse(candStr);
                         pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(e => {});
                     });
@@ -318,28 +901,75 @@
         }
 
         function setupDataChannel(dc) {
+            dc.binaryType = "arraybuffer";
+
             dc.onopen = () => {
+                if (connectTimeout) {
+                    clearTimeout(connectTimeout);
+                    connectTimeout = null;
+                }
                 statusText.innerText = "Pro Bridge Active & Secure";
                 statusLight.style.background = "#34C759";
+                statusLight.style.boxShadow = "0 0 10px #34C759";
                 authSection.style.display = 'none';
                 fileHub.style.display = 'block';
-                
-                // Demo file list refresh
-                document.getElementById('items').innerHTML = `
-                    <div class="file-item">
-                        <div>
-                            <p style="font-weight: bold; font-size: 14px;">Mac_Setup_Helper.dmg</p>
-                            <p style="font-size: 11px; opacity: 0.5;">Compressed Archive • 2.4 GB</p>
-                        </div>
-                        <button style="padding: 8px 16px; font-size: 12px; background: transparent; border: 1px solid var(--accent-blue); color: var(--accent-blue); border-radius: 8px;">Retrieve</button>
-                    </div>
-                `;
+
+                requestFileList();
             };
 
-            dc.onmessage = (event) => {
+            dc.onmessage = async (event) => {
                 console.log("P2P Message:", event.data);
+                if (typeof event.data === "string") {
+                    handleDataPayload(event.data);
+                    return;
+                }
+                await handleBinaryPayload(event.data);
+            };
+
+            dc.onclose = () => {
+                if (fileHub.style.display === 'block') {
+                    statusText.innerText = "Bridge disconnected. Reconnect to continue.";
+                    statusLight.style.background = "#FFD60A";
+                    statusLight.style.boxShadow = "0 0 10px #FFD60A";
+                    authSection.style.display = 'flex';
+                    fileHub.style.display = 'none';
+                    showFilesStatus("Disconnected.", true);
+                    activeDownload = null;
+                }
             };
         }
+
+        refreshFilesBtn.addEventListener('click', () => {
+            requestFileList();
+        });
+
+        disconnectBtn.addEventListener('click', () => {
+            cleanupHandshake();
+            authSection.style.display = 'flex';
+            fileHub.style.display = 'none';
+            statusText.innerText = "Disconnected";
+            statusLight.style.background = "#FFD60A";
+            statusLight.style.boxShadow = "0 0 10px #FFD60A";
+            showUploadStatus("Disconnected.", true);
+            setUploadProgress(0);
+        });
+
+        sendFilesBtn.addEventListener('click', () => {
+            if (isUploading) return;
+            uploadInput.click();
+        });
+
+        filesContainer.addEventListener('click', (e) => {
+            const btn = e.target.closest('.remote-download-btn');
+            if (!btn) return;
+            const encodedPath = btn.getAttribute('data-path') || '';
+            const path = decodeURIComponent(encodedPath);
+            window.requestRemoteDownload(path);
+        });
+
+        uploadInput.addEventListener('change', (e) => {
+            sendFilesToPhone(e.target.files);
+        });
     </script>
 </body>
 </html>

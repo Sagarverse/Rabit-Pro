@@ -1,0 +1,286 @@
+package com.example.rabit.data.airplay
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
+import android.os.Build
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import com.sagar.rabit.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.ServerSocket
+import java.net.Socket
+
+/**
+ * AirPlayReceiverService (experimental):
+ * - Advertises Rabit as a RAOP service (_raop._tcp) on local Wi-Fi via NSD/mDNS.
+ * - Keeps a foreground service alive for receiver lifecycle.
+ * - Socket acceptance is currently a transport scaffold; full ALAC/RAOP decode requires
+ *   a dedicated RAOP implementation/library.
+ */
+class AirPlayReceiverService : Service() {
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var nsdManager: NsdManager? = null
+    private var registrationListener: NsdManager.RegistrationListener? = null
+    private var serverSocket: ServerSocket? = null
+    private var acceptJob: Job? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
+    private val audioSink: RaopAudioSink = AudioTrackPcmSink()
+    private lateinit var raopEngine: RaopEngine
+
+    override fun onCreate() {
+        super.onCreate()
+        nsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
+        val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        multicastLock = wifi.createMulticastLock("rabit_airplay_lock").apply {
+            setReferenceCounted(false)
+        }
+        raopEngine = StubRaopEngine(status = { updateRuntimeStatus(it) }, audioSink = audioSink)
+        ensureChannel()
+        AirPlayStateBus.publish("Idle")
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_TEST_TONE -> {
+                scope.launch {
+                    audioSink.playTestTone(1300)
+                    updateRuntimeStatus("Audio pipeline test tone played")
+                }
+            }
+            ACTION_STOP -> {
+                stopReceiver()
+                stopSelf()
+            }
+            else -> {
+                updateRuntimeStatus("Starting AirPlay receiver")
+                startReceiver()
+            }
+        }
+        return START_STICKY
+    }
+
+    private fun startReceiver() {
+        if (serverSocket != null) return
+
+        scope.launch {
+            try {
+                multicastLock?.acquire()
+                serverSocket = ServerSocket(0)
+                val port = serverSocket?.localPort ?: return@launch
+                registerRaopService(port)
+                updateRuntimeStatus("AirPlay ready on port $port")
+
+                acceptJob = launch {
+                    while (isActive) {
+                        val socket = try {
+                            serverSocket?.accept()
+                        } catch (_: Exception) {
+                            null
+                        }
+                        socket?.let {
+                            launch { handleRtspClient(it) }
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                updateRuntimeStatus("AirPlay start failed")
+            }
+        }
+    }
+
+    private fun stopReceiver() {
+        try {
+            unregisterRaopService()
+        } catch (_: Exception) {
+        }
+        try {
+            acceptJob?.cancel()
+            acceptJob = null
+        } catch (_: Exception) {
+        }
+        try {
+            serverSocket?.close()
+            serverSocket = null
+        } catch (_: Exception) {
+        }
+        try {
+            multicastLock?.release()
+        } catch (_: Exception) {
+        }
+        updateRuntimeStatus("Idle")
+    }
+
+    private fun handleRtspClient(socket: Socket) {
+        val remote = "${socket.inetAddress?.hostAddress}:${socket.port}"
+        updateRuntimeStatus("Client connected: $remote")
+        raopEngine.onClientConnected(remote)
+
+        try {
+            socket.soTimeout = 10_000
+            val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+            val writer = OutputStreamWriter(socket.getOutputStream())
+
+            while (true) {
+                val requestLine = reader.readLine() ?: break
+                if (requestLine.isBlank()) continue
+
+                val headers = mutableMapOf<String, String>()
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.isBlank()) break
+                    val idx = line.indexOf(':')
+                    if (idx > 0) {
+                        headers[line.substring(0, idx).trim().lowercase()] = line.substring(idx + 1).trim()
+                    }
+                }
+
+                val parts = requestLine.split(' ')
+                val method = parts.firstOrNull()?.uppercase() ?: "UNKNOWN"
+                val uri = parts.getOrNull(1) ?: "*"
+                val version = parts.getOrNull(2) ?: "RTSP/1.0"
+                val cseq = headers["cseq"] ?: "1"
+                val contentLength = headers["content-length"]?.toIntOrNull() ?: 0
+                var body = ""
+                if (contentLength > 0) {
+                    val discard = CharArray(contentLength)
+                    var read = 0
+                    while (read < contentLength) {
+                        val n = reader.read(discard, read, contentLength - read)
+                        if (n <= 0) break
+                        read += n
+                    }
+                    body = String(discard, 0, read)
+                }
+
+                val request = RtspRequest(method = method, uri = uri, version = version, headers = headers, body = body)
+                updateRuntimeStatus("RTSP $method from $remote")
+                val response = raopEngine.handleRtsp(request)
+                writer.write(buildRawRtspResponse(cseq, response))
+                writer.flush()
+
+                if (method == "TEARDOWN") {
+                    break
+                }
+            }
+        } catch (_: Exception) {
+            updateRuntimeStatus("RTSP session ended")
+        } finally {
+            raopEngine.onClientDisconnected(remote)
+            runCatching { socket.close() }
+        }
+    }
+
+    private fun buildRawRtspResponse(cseq: String, response: RtspResponse): String {
+        val common = StringBuilder()
+            .append("RTSP/1.0 ${response.statusCode} ${response.reason}\r\n")
+            .append("CSeq: $cseq\r\n")
+            .append("Server: RabitRAOP/0.1\r\n")
+
+        response.headers.forEach { (k, v) ->
+            common.append("$k: $v\r\n")
+        }
+
+        if (response.body.isNotBlank()) {
+            common.append("Content-Length: ${response.body.toByteArray().size}\r\n")
+        }
+
+        common.append("\r\n")
+        if (response.body.isNotBlank()) {
+            common.append(response.body)
+        }
+        return common.toString()
+    }
+
+    private fun registerRaopService(port: Int) {
+        val host = Build.MODEL.replace(" ", "")
+        val raopId = "RABIT${host.take(6).uppercase()}"
+
+        val serviceInfo = NsdServiceInfo().apply {
+            serviceName = "$raopId@Rabit"
+            serviceType = "_raop._tcp."
+            setPort(port)
+            setAttribute("txtvers", "1")
+            setAttribute("cn", "0,1")
+            setAttribute("ch", "2")
+            setAttribute("sr", "44100")
+            setAttribute("ss", "16")
+            setAttribute("tp", "UDP")
+            setAttribute("vn", "3")
+            setAttribute("md", "0,1,2")
+            setAttribute("sf", "0x4")
+            setAttribute("am", "Rabit")
+        }
+
+        registrationListener = object : NsdManager.RegistrationListener {
+            override fun onServiceRegistered(nsdServiceInfo: NsdServiceInfo) {}
+            override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
+            override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {}
+            override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
+        }
+
+        nsdManager?.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+    }
+
+    private fun unregisterRaopService() {
+        val listener = registrationListener ?: return
+        nsdManager?.unregisterService(listener)
+        registrationListener = null
+    }
+
+    private fun ensureChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NotificationManager::class.java)
+            val channel = NotificationChannel(CHANNEL_ID, "Rabit AirPlay", NotificationManager.IMPORTANCE_LOW)
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun buildNotification(content: String): Notification {
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("Rabit AirPlay Receiver")
+            .setContentText(content)
+            .setOngoing(true)
+            .build()
+    }
+
+    private fun updateRuntimeStatus(content: String) {
+        AirPlayStateBus.publish(content)
+        startForeground(NOTIFICATION_ID, buildNotification(content))
+    }
+
+    override fun onDestroy() {
+        stopReceiver()
+        audioSink.release()
+        raopEngine.shutdown()
+        scope.cancel()
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    companion object {
+        const val ACTION_START = "com.example.rabit.airplay.START"
+        const val ACTION_STOP = "com.example.rabit.airplay.STOP"
+        const val ACTION_TEST_TONE = "com.example.rabit.airplay.TEST_TONE"
+        private const val CHANNEL_ID = "rabit_airplay_receiver"
+        private const val NOTIFICATION_ID = 77
+    }
+}

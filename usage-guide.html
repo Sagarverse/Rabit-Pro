@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rabit Usage Guide - Step by Step</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #08111a;
+            --bg-alt: #0f1d2a;
+            --card: #132636;
+            --line: #28465f;
+            --text: #e7f2ff;
+            --muted: #9ec2df;
+            --accent: #19b3a6;
+            --accent-2: #63d3ff;
+            --warn: #ffd166;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: 'Space Grotesk', sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at 10% 10%, rgba(25, 179, 166, 0.16), transparent 40%),
+                radial-gradient(circle at 90% 0%, rgba(99, 211, 255, 0.14), transparent 35%),
+                var(--bg);
+            line-height: 1.65;
+        }
+
+        .container {
+            width: min(1080px, calc(100% - 2rem));
+            margin: 0 auto;
+        }
+
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            backdrop-filter: blur(8px);
+            background: rgba(8, 17, 26, 0.75);
+            border-bottom: 1px solid var(--line);
+        }
+
+        .top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.85rem 0;
+        }
+
+        .logo {
+            font-weight: 700;
+            letter-spacing: 0.06em;
+        }
+
+        .logo span { color: var(--accent); }
+
+        .links {
+            display: flex;
+            gap: 0.9rem;
+            flex-wrap: wrap;
+        }
+
+        .links a,
+        .btn {
+            color: var(--text);
+            text-decoration: none;
+            border: 1px solid var(--line);
+            padding: 0.5rem 0.8rem;
+            border-radius: 999px;
+            font-size: 0.9rem;
+            transition: 180ms ease;
+        }
+
+        .links a:hover,
+        .btn:hover {
+            border-color: var(--accent);
+            color: var(--accent-2);
+        }
+
+        .hero {
+            padding: 3.5rem 0 2rem;
+        }
+
+        h1 {
+            margin: 0 0 0.8rem;
+            font-size: clamp(2rem, 4.8vw, 3.5rem);
+            line-height: 1.1;
+        }
+
+        .subtitle {
+            margin: 0;
+            color: var(--muted);
+            max-width: 760px;
+        }
+
+        .badges {
+            display: flex;
+            gap: 0.6rem;
+            margin-top: 1.2rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.78rem;
+            border: 1px dashed var(--line);
+            padding: 0.35rem 0.55rem;
+            border-radius: 6px;
+            color: var(--muted);
+        }
+
+        section {
+            padding: 1rem 0 2rem;
+        }
+
+        h2 {
+            font-size: clamp(1.4rem, 3.3vw, 2rem);
+            margin: 2rem 0 1rem;
+        }
+
+        h3 {
+            margin: 0 0 0.35rem;
+            font-size: 1.1rem;
+        }
+
+        .grid {
+            display: grid;
+            gap: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        }
+
+        .card {
+            background: linear-gradient(160deg, rgba(19, 38, 54, 0.95), rgba(15, 29, 42, 0.92));
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 1rem;
+        }
+
+        .step-list {
+            display: grid;
+            gap: 0.9rem;
+        }
+
+        .step {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 1rem;
+            background: rgba(15, 29, 42, 0.88);
+        }
+
+        .step-num {
+            font-family: 'IBM Plex Mono', monospace;
+            color: var(--accent);
+            font-size: 0.86rem;
+            margin-bottom: 0.3rem;
+        }
+
+        ul {
+            margin: 0.45rem 0 0;
+            padding-left: 1rem;
+        }
+
+        .tip {
+            border-left: 4px solid var(--warn);
+            padding: 0.85rem 1rem;
+            color: var(--muted);
+            background: rgba(255, 209, 102, 0.08);
+            border-radius: 10px;
+            margin-top: 1rem;
+        }
+
+        footer {
+            margin-top: 1rem;
+            border-top: 1px solid var(--line);
+            padding: 1.2rem 0 2rem;
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        @media (max-width: 700px) {
+            .top { align-items: flex-start; gap: 0.8rem; flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container top">
+            <div class="logo">RAB<span>IT</span> GUIDE</div>
+            <nav class="links">
+                <a href="index.html">Home</a>
+                <a href="#quickstart">Quick Start</a>
+                <a href="#features">Feature Walkthrough</a>
+                <a href="#troubleshooting">Troubleshooting</a>
+                <a href="https://github.com/Sagarverse/Rabit-Pro/releases" target="_blank" rel="noopener noreferrer">Download APK</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="hero">
+            <h1>How To Use Rabit, Step by Step</h1>
+            <p class="subtitle">This guide walks through the full flow: first pairing, keyboard and touchpad usage, AI assistant workflows, URL handoff, automation tools, snippets, shortcuts, and settings customization.</p>
+            <div class="badges">
+                <span class="badge">Android Controller</span>
+                <span class="badge">Bluetooth HID</span>
+                <span class="badge">AI Assistant</span>
+                <span class="badge">Mac + Android Targets</span>
+            </div>
+        </section>
+
+        <section id="quickstart">
+            <h2>Quick Start</h2>
+            <div class="step-list">
+                <article class="step">
+                    <div class="step-num">STEP 01</div>
+                    <h3>Install and launch</h3>
+                    <p>Install the latest APK, open Rabit, and grant requested permissions for Bluetooth and notifications.</p>
+                </article>
+                <article class="step">
+                    <div class="step-num">STEP 02</div>
+                    <h3>Pair your target device</h3>
+                    <p>From the Pairing screen, select your Mac or Android target and confirm pairing prompts on both devices.</p>
+                </article>
+                <article class="step">
+                    <div class="step-num">STEP 03</div>
+                    <h3>Start in Keyboard screen</h3>
+                    <p>After connection, enter the Keyboard module and test typing, modifiers, enter, and media keys.</p>
+                </article>
+            </div>
+            <div class="tip">Tip: if connection drops, return to Pairing and reconnect before testing advanced modules like automation or assistant typing.</div>
+        </section>
+
+        <section id="features">
+            <h2>Detailed Feature Walkthrough</h2>
+            <div class="grid">
+                <article class="card">
+                    <h3>Keyboard + Modifiers</h3>
+                    <p>Use the INPUT tab for standard keyboard entry.</p>
+                    <ul>
+                        <li>Toggle modifier keys (Cmd, Ctrl, Shift, Alt) then press target keys.</li>
+                        <li>Use system keys for navigation and app switching.</li>
+                        <li>Use batch typing to send longer text quickly.</li>
+                    </ul>
+                </article>
+                <article class="card">
+                    <h3>Touchpad (PAD Tab)</h3>
+                    <p>Use your phone as a pointer device.</p>
+                    <ul>
+                        <li>Single tap for click, two-finger for scroll.</li>
+                        <li>Use motion/air-mouse features if enabled in settings.</li>
+                        <li>Disable PAD mode when done to save battery.</li>
+                    </ul>
+                </article>
+                <article class="card">
+                    <h3>Assistant (AI)</h3>
+                    <p>Open Assistant to generate or refine text.</p>
+                    <ul>
+                        <li>Ask for rewrites, summaries, or structured drafts.</li>
+                        <li>Use Auto Push to type generated output onto your connected device.</li>
+                        <li>Set response behavior in prompts/system instruction settings.</li>
+                    </ul>
+                </article>
+                <article class="card">
+                    <h3>Snippets</h3>
+                    <p>Save frequently used text blocks for one-tap typing.</p>
+                    <ul>
+                        <li>Create categorized snippets (email, code, replies).</li>
+                        <li>Tap to inject content through HID typing.</li>
+                        <li>Update snippets as reusable templates.</li>
+                    </ul>
+                </article>
+                <article class="card">
+                    <h3>Shortcuts Guide</h3>
+                    <p>Use predefined shortcuts for faster navigation.</p>
+                    <ul>
+                        <li>Review common productivity combinations.</li>
+                        <li>Practice in a text editor before live work.</li>
+                        <li>Use in combination with modifier lock for speed.</li>
+                    </ul>
+                </article>
+                <article class="card">
+                    <h3>URL Handoff</h3>
+                    <p>Share a URL from Android and open it quickly on your connected Mac via keyboard macro flow.</p>
+                    <ul>
+                        <li>Tap Share in mobile browser, choose Rabit Handoff.</li>
+                        <li>Rabit opens browser launcher flow on the target.</li>
+                        <li>URL is typed and submitted automatically.</li>
+                    </ul>
+                </article>
+                <article class="card">
+                    <h3>Automation Module</h3>
+                    <p>Use in-app automation tools for your own devices.</p>
+                    <ul>
+                        <li>Wake-on-LAN screen to wake supported machines.</li>
+                        <li>SSH Terminal screen for authenticated remote commands.</li>
+                        <li>Use only on systems you own or are authorized to manage.</li>
+                    </ul>
+                </article>
+                <article class="card">
+                    <h3>Settings + Customization</h3>
+                    <p>Control feature visibility and personalization.</p>
+                    <ul>
+                        <li>Enable/disable modules from Customization.</li>
+                        <li>Configure profile and AI/API options.</li>
+                        <li>Adjust usability features for your workflow.</li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+
+        <section id="complex-macros">
+            <h2>How To Create Complex Macros In App</h2>
+            <div class="step-list">
+                <article class="step">
+                    <div class="step-num">STEP 01</div>
+                    <h3>Open macro editor</h3>
+                    <p>Go to Automation screen, then open USER CUSTOM and tap +.</p>
+                </article>
+                <article class="step">
+                    <div class="step-num">STEP 02</div>
+                    <h3>Use script commands</h3>
+                    <p>Write one command per line. Supported commands are <strong>KEY(...)</strong>, <strong>TEXT(...)</strong>, <strong>WAIT(...)</strong>, and <strong>MEDIA(...)</strong>.</p>
+                </article>
+                <article class="step">
+                    <div class="step-num">STEP 03</div>
+                    <h3>Save and run</h3>
+                    <p>Give your macro a name, save it, then tap it from USER CUSTOM to execute the full sequence.</p>
+                </article>
+            </div>
+            <div class="card" style="margin-top: 12px;">
+                <h3>Example: Spotlight -> Terminal -> whoami</h3>
+                <pre style="white-space: pre-wrap; margin: 0; color: var(--muted); font-family: 'IBM Plex Mono', monospace;">KEY(CMD+SPACE)
+WAIT(300)
+TEXT(Terminal)
+KEY(ENTER)
+WAIT(700)
+TEXT(whoami)
+KEY(ENTER)</pre>
+            </div>
+        </section>
+
+        <section id="media-deck">
+            <h2>Media Control Deck & Now Playing</h2>
+            <div class="step-list">
+                <article class="step">
+                    <div class="step-num">STEP 01</div>
+                    <h3>Open Media Control Deck</h3>
+                    <p>From the app drawer, open Media Control Deck. Use Play/Pause, Volume, Previous, and Next controls to send HID media commands to your Mac.</p>
+                </article>
+                <article class="step">
+                    <div class="step-num">STEP 02</div>
+                    <h3>Connect companion metadata channel</h3>
+                    <p>Run desktop-helper on Mac. It authenticates with bridge PIN and pushes NOW_PLAYING payloads so Rabit displays title, artist, and album live.</p>
+                </article>
+            </div>
+            <div class="card" style="margin-top: 12px;">
+                <h3>NOW_PLAYING JSON payload</h3>
+                <pre style="white-space: pre-wrap; margin: 0; color: var(--muted); font-family: 'IBM Plex Mono', monospace;">{
+  "type": "NOW_PLAYING",
+  "title": "Song Title",
+  "artist": "Artist",
+  "album": "Album",
+  "artworkBase64": "..."
+}</pre>
+            </div>
+        </section>
+
+        <section id="airplay-receiver">
+            <h2>AirPlay Receiver (Wi-Fi)</h2>
+            <div class="step-list">
+                <article class="step">
+                    <div class="step-num">STEP 01</div>
+                    <h3>Open AirPlay Receiver screen</h3>
+                    <p>From drawer, open AirPlay Receiver and enable it.</p>
+                </article>
+                <article class="step">
+                    <div class="step-num">STEP 02</div>
+                    <h3>Select Rabit on Mac</h3>
+                    <p>On macOS Control Center -> Sound, pick Rabit from available outputs on same Wi-Fi.</p>
+                </article>
+            </div>
+            <div class="tip">Current build includes RAOP discovery and foreground receiver lifecycle scaffold. Full ALAC/RAOP decode pipeline requires an embedded RAOP engine/library.</div>
+        </section>
+
+        <section id="troubleshooting">
+            <h2>Troubleshooting</h2>
+            <div class="step-list">
+                <article class="step">
+                    <div class="step-num">CHECK 01</div>
+                    <h3>Not connecting over Bluetooth</h3>
+                    <p>Verify Bluetooth is enabled on both devices, remove stale pairing records, then pair again from Rabit Pairing screen.</p>
+                </article>
+                <article class="step">
+                    <div class="step-num">CHECK 02</div>
+                    <h3>No typing on target</h3>
+                    <p>Ensure the target input field is focused and Rabit still shows connected state in the header.</p>
+                </article>
+                <article class="step">
+                    <div class="step-num">CHECK 03</div>
+                    <h3>Assistant response not typing</h3>
+                    <p>Open Assistant settings and verify Auto Push or manual send action is enabled for output transfer.</p>
+                </article>
+            </div>
+        </section>
+
+        <section>
+            <h2>Best Practices</h2>
+            <div class="grid">
+                <article class="card">
+                    <h3>Use trusted devices</h3>
+                    <p>Pair only with your own systems or explicitly approved devices.</p>
+                </article>
+                <article class="card">
+                    <h3>Keep prompts clear</h3>
+                    <p>For AI output, concise instructions improve typing reliability and formatting quality.</p>
+                </article>
+                <article class="card">
+                    <h3>Save reusable flows</h3>
+                    <p>Move repetitive text actions into snippets and shortcuts to reduce manual work.</p>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            Rabit Usage Guide • Built for practical productivity on Android + Mac workflows.
+        </div>
+    </footer>
+</body>
+</html>

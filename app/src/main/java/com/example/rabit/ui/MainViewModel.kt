@@ -1,13 +1,18 @@
 package com.example.rabit.ui
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Application
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.ContentValues
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -21,11 +26,13 @@ import com.example.rabit.data.sensors.GyroscopeAirMouse
 import com.example.rabit.data.network.RabitNetworkServer
 import com.example.rabit.data.network.WebRtcManager
 import com.example.rabit.data.gemini.LocalLlmManager
+import com.example.rabit.data.airplay.AirPlayStateBus
 import com.example.rabit.data.sensors.SpatialPointerManager
 import com.example.rabit.data.voice.VoiceAssistantManager
 import com.example.rabit.data.voice.VoiceState
 import com.example.rabit.data.secure.SecureStorage
 import android.bluetooth.BluetoothManager
+import android.util.Base64
 import com.example.rabit.domain.model.HidKeyCodes
 import com.example.rabit.domain.model.Workstation
 import com.example.rabit.domain.model.RemoteFile
@@ -33,6 +40,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -52,10 +60,15 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.util.Properties
+import java.util.UUID
 import kotlin.experimental.or
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.sign
+import androidx.core.content.ContextCompat
+import android.provider.MediaStore
+import java.io.File
+import java.io.FileOutputStream
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: KeyboardRepository = KeyboardRepositoryImpl(application)
@@ -65,6 +78,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val voiceAssistantManager = VoiceAssistantManager(application)
     private val webRtcManager = WebRtcManager(application)
     private val secureStorage = SecureStorage(application)
+    private val wifiAudioSink = com.example.rabit.data.airplay.AudioTrackPcmSink()
     private val prefs = application.getSharedPreferences("rabit_prefs", Context.MODE_PRIVATE)
 
     val connectionState: StateFlow<HidDeviceManager.ConnectionState> = repository.connectionState
@@ -130,6 +144,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val featureWakeOnLanVisible = _featureWakeOnLanVisible.asStateFlow()
     private val _featureSshTerminalVisible = MutableStateFlow(prefs.getBoolean("feature_ssh_terminal_visible", true))
     val featureSshTerminalVisible = _featureSshTerminalVisible.asStateFlow()
+
+    // Media Deck / Now Playing
+    private val _nowPlayingTitle = MutableStateFlow("No track")
+    val nowPlayingTitle = _nowPlayingTitle.asStateFlow()
+    private val _nowPlayingArtist = MutableStateFlow("Connect companion for metadata")
+    val nowPlayingArtist = _nowPlayingArtist.asStateFlow()
+    private val _nowPlayingAlbum = MutableStateFlow("")
+    val nowPlayingAlbum = _nowPlayingAlbum.asStateFlow()
+    private val _nowPlayingArtworkBase64 = MutableStateFlow<String?>(null)
+    val nowPlayingArtworkBase64 = _nowPlayingArtworkBase64.asStateFlow()
+    private val _nowPlayingTimestamp = MutableStateFlow(0L)
+    val nowPlayingTimestamp = _nowPlayingTimestamp.asStateFlow()
+
+    // AirPlay Receiver (experimental RAOP service discovery + service lifecycle)
+    private val _airPlayReceiverEnabled = MutableStateFlow(prefs.getBoolean("airplay_receiver_enabled", false))
+    val airPlayReceiverEnabled = _airPlayReceiverEnabled.asStateFlow()
+    private val _airPlayStatus = MutableStateFlow("Idle")
+    val airPlayStatus = _airPlayStatus.asStateFlow()
+    private val _wifiAudioStatus = MutableStateFlow("Idle")
+    val wifiAudioStatus = _wifiAudioStatus.asStateFlow()
+    private val _wifiAudioStreamActive = MutableStateFlow(false)
+    val wifiAudioStreamActive = _wifiAudioStreamActive.asStateFlow()
 
     private val _webBridgeRunning = MutableStateFlow(RabitNetworkServer.isRunning)
     val isWebBridgeRunning: StateFlow<Boolean> = _webBridgeRunning.asStateFlow()
@@ -197,6 +233,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     )
     val hostProfilePreset = _hostProfilePreset.asStateFlow()
 
+    // Mouse Jiggler (Caffeine)
+    private val _isMouseJigglerEnabled = MutableStateFlow(prefs.getBoolean("mouse_jiggler_enabled", false))
+    val isMouseJigglerEnabled = _isMouseJigglerEnabled.asStateFlow()
+    private var mouseJigglerJob: Job? = null
+
+    fun setMouseJigglerEnabled(enabled: Boolean) {
+        _isMouseJigglerEnabled.value = enabled
+        prefs.edit().putBoolean("mouse_jiggler_enabled", enabled).apply()
+        updateMouseJiggler()
+    }
+
+    private fun updateMouseJiggler() {
+        val isEnabled = _isMouseJigglerEnabled.value
+        val isConnected = connectionState.value is HidDeviceManager.ConnectionState.Connected
+        if (isEnabled && isConnected) {
+            if (mouseJigglerJob == null || mouseJigglerJob?.isActive != true) {
+                mouseJigglerJob = viewModelScope.launch(Dispatchers.IO) {
+                    var right = true
+                    while (isActive) {
+                        try {
+                            repository.sendMouseMove(if (right) 1f else -1f, 0f)
+                            right = !right
+                        } catch (e: Exception) {}
+                        delay(30_000)
+                    }
+                }
+            }
+        } else {
+            mouseJigglerJob?.cancel()
+            mouseJigglerJob = null
+        }
+    }
+
     // Voice & Speech Engine
     private val _ttsPitch = MutableStateFlow(prefs.getFloat("tts_pitch", 1.0f))
     val ttsPitch = _ttsPitch.asStateFlow()
@@ -221,6 +290,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _remoteFiles = MutableStateFlow<List<RemoteFile>>(emptyList())
     val remoteFiles = _remoteFiles.asStateFlow()
 
+    private data class IncomingUploadSession(
+        val transferId: String,
+        val fileName: String,
+        val mimeType: String,
+        val sizeBytes: Long,
+        val tempFile: File,
+        val output: FileOutputStream,
+        var bytesReceived: Long = 0L
+    )
+
+    private val incomingUploadSessions = mutableMapOf<String, IncomingUploadSession>()
+
     private val _isRemoteLoading = MutableStateFlow(false)
     val isRemoteLoading = _isRemoteLoading.asStateFlow()
 
@@ -230,6 +311,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Phase 10: Advanced Customization & Biometric states
     private val _biometricLockEnabled = MutableStateFlow(prefs.getBoolean("biometric_lock_enabled", false))
     val biometricLockEnabled = _biometricLockEnabled.asStateFlow()
+    private val _biometricMacAutofillEnabled = MutableStateFlow(prefs.getBoolean("biometric_mac_autofill_enabled", true))
+    val biometricMacAutofillEnabled = _biometricMacAutofillEnabled.asStateFlow()
+    private val _macAutofillPreEnter = MutableStateFlow(prefs.getBoolean("mac_autofill_pre_enter", true))
+    val macAutofillPreEnter = _macAutofillPreEnter.asStateFlow()
+    private val _macAutofillPostEnter = MutableStateFlow(prefs.getBoolean("mac_autofill_post_enter", true))
+    val macAutofillPostEnter = _macAutofillPostEnter.asStateFlow()
 
     private val _shakeToDisconnectEnabled = MutableStateFlow(prefs.getBoolean("shake_to_disconnect_enabled", false))
     val shakeToDisconnectEnabled = _shakeToDisconnectEnabled.asStateFlow()
@@ -244,6 +331,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val activeApp = _activeApp.asStateFlow()
 
     init {
+        RabitNetworkServer.nowPlayingReceiver = { payload ->
+            setNowPlayingPreview(
+                title = payload.title,
+                artist = payload.artist,
+                album = payload.album,
+                artworkBase64 = payload.artworkBase64
+            )
+        }
+        RabitNetworkServer.audioStreamStartReceiver = { payload ->
+            wifiAudioSink.configure(
+                sampleRate = payload.sampleRate.coerceIn(8_000, 96_000),
+                channels = payload.channels.coerceIn(1, 2)
+            )
+            _wifiAudioStreamActive.value = true
+            _wifiAudioStatus.value = "Streaming from ${payload.source} (${payload.sampleRate} Hz)"
+        }
+        RabitNetworkServer.audioStreamChunkReceiver = { payload ->
+            try {
+                val pcm = Base64.decode(payload.pcm16leBase64, Base64.DEFAULT)
+                if (pcm.isNotEmpty()) {
+                    wifiAudioSink.writePcm16le(pcm)
+                    _wifiAudioStreamActive.value = true
+                }
+            } catch (_: Exception) {
+                _wifiAudioStatus.value = "Audio chunk decode error"
+            }
+        }
+        RabitNetworkServer.audioStreamStopReceiver = { payload ->
+            wifiAudioSink.stop()
+            _wifiAudioStreamActive.value = false
+            _wifiAudioStatus.value = "Stopped (${payload.reason})"
+        }
+
         spatialPointerManager.onPointerUpdate = { dx, dy ->
             if (_airMouseEnabled.value) {
                 repository.sendMouseMove(dx, dy)
@@ -251,8 +371,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         gyroAirMouse.onShakeDetected = {
-            if (_shakeToDisconnectEnabled.value && connectionState.value is HidDeviceManager.ConnectionState.Connected) {
-                repository.disconnect()
+            if (_shakeToDisconnectEnabled.value) {
+                when (connectionState.value) {
+                    is HidDeviceManager.ConnectionState.Connected -> repository.disconnect()
+                    is HidDeviceManager.ConnectionState.Disconnected -> reconnectLastSavedDevice()
+                    else -> Unit
+                }
             }
         }
 
@@ -272,6 +396,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (type == "ACTIVE_APP") {
                     _activeApp.value = data as String
                 }
+            }
+        }
+
+        viewModelScope.launch {
+            AirPlayStateBus.status.collect { status ->
+                _airPlayStatus.value = status
             }
         }
     }
@@ -294,6 +424,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setBiometricLockEnabled(enabled: Boolean) {
         _biometricLockEnabled.value = enabled
         prefs.edit().putBoolean("biometric_lock_enabled", enabled).apply()
+    }
+
+    fun setBiometricMacAutofillEnabled(enabled: Boolean) {
+        _biometricMacAutofillEnabled.value = enabled
+        prefs.edit().putBoolean("biometric_mac_autofill_enabled", enabled).apply()
+    }
+
+    fun setMacAutofillPreEnter(enabled: Boolean) {
+        _macAutofillPreEnter.value = enabled
+        prefs.edit().putBoolean("mac_autofill_pre_enter", enabled).apply()
+    }
+
+    fun setMacAutofillPostEnter(enabled: Boolean) {
+        _macAutofillPostEnter.value = enabled
+        prefs.edit().putBoolean("mac_autofill_post_enter", enabled).apply()
     }
 
     fun setShakeToDisconnectEnabled(enabled: Boolean) {
@@ -633,6 +778,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Save device when connected
         viewModelScope.launch {
             connectionState.collect { state ->
+                updateMouseJiggler()
                 if (state is HidDeviceManager.ConnectionState.Connected) {
                     saveDevice(state.deviceName, "")
                     if (_hostProfilePreset.value == HostProfilePreset.AUTO) {
@@ -649,9 +795,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _savedDevices.value.firstOrNull()?.let { device ->
                     val bluetoothManager = getApplication<Application>().getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
                     val bluetoothAdapter = bluetoothManager.adapter
-                    val bondedDevice = try {
-                        bluetoothAdapter?.bondedDevices?.find { it.name == device.name }
-                    } catch (e: Exception) { null }
+                    val bondedDevice = findBondedDeviceByName(bluetoothAdapter, device.name)
                     
                     if (bondedDevice != null && connectionState.value is HidDeviceManager.ConnectionState.Disconnected) {
                         repository.connectWithRetry(bondedDevice)
@@ -739,6 +883,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean("p2p_enabled", false).apply()
     }
 
+    fun sendMediaPlayPause() = repository.sendConsumerKey(HidKeyCodes.MEDIA_PLAY_PAUSE)
+    fun sendMediaNextTrack() = repository.sendConsumerKey(HidKeyCodes.MEDIA_NEXT)
+    fun sendMediaPreviousTrack() = repository.sendConsumerKey(HidKeyCodes.MEDIA_PREVIOUS)
+    fun sendMediaVolumeUp() = repository.sendConsumerKey(HidKeyCodes.MEDIA_VOL_UP)
+    fun sendMediaVolumeDown() = repository.sendConsumerKey(HidKeyCodes.MEDIA_VOL_DOWN)
+
+    fun requestNowPlayingFromHost() {
+        val request = JSONObject().apply {
+            put("type", "NOW_PLAYING_REQUEST")
+            put("source", "android_media_deck")
+            put("ts", System.currentTimeMillis())
+        }
+        webRtcManager.sendData(request.toString())
+    }
+
+    fun setNowPlayingPreview(title: String, artist: String, album: String = "", artworkBase64: String? = null) {
+        _nowPlayingTitle.value = title.ifBlank { "No track" }
+        _nowPlayingArtist.value = artist.ifBlank { "Unknown artist" }
+        _nowPlayingAlbum.value = album
+        _nowPlayingArtworkBase64.value = artworkBase64
+        _nowPlayingTimestamp.value = System.currentTimeMillis()
+    }
+
+    fun startAirPlayReceiver() {
+        val intent = Intent(getApplication<Application>(), com.example.rabit.data.airplay.AirPlayReceiverService::class.java).apply {
+            action = com.example.rabit.data.airplay.AirPlayReceiverService.ACTION_START
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getApplication<Application>().startForegroundService(intent)
+        } else {
+            getApplication<Application>().startService(intent)
+        }
+        _airPlayReceiverEnabled.value = true
+        _airPlayStatus.value = "Advertising _raop._tcp on local Wi-Fi"
+        prefs.edit().putBoolean("airplay_receiver_enabled", true).apply()
+    }
+
+    fun stopAirPlayReceiver() {
+        val intent = Intent(getApplication<Application>(), com.example.rabit.data.airplay.AirPlayReceiverService::class.java).apply {
+            action = com.example.rabit.data.airplay.AirPlayReceiverService.ACTION_STOP
+        }
+        getApplication<Application>().startService(intent)
+        _airPlayReceiverEnabled.value = false
+        _airPlayStatus.value = "Idle"
+        prefs.edit().putBoolean("airplay_receiver_enabled", false).apply()
+    }
+
+    fun playAirPlayTestTone() {
+        val intent = Intent(getApplication<Application>(), com.example.rabit.data.airplay.AirPlayReceiverService::class.java).apply {
+            action = com.example.rabit.data.airplay.AirPlayReceiverService.ACTION_TEST_TONE
+        }
+        getApplication<Application>().startService(intent)
+    }
+
     fun startScanning() = repository.startScanning()
     fun stopScanning() = repository.stopScanning()
     fun requestDiscoverable() {
@@ -749,14 +947,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val bluetoothAdapter = bluetoothManager.adapter
         if (bluetoothAdapter != null && !bluetoothAdapter.isEnabled) {
+            if (!hasBluetoothConnectPermission(context)) return
             val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
             enableBtIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(enableBtIntent)
+            try {
+                context.startActivity(enableBtIntent)
+            } catch (_: SecurityException) {
+            }
         }
     }
 
     fun connect(device: BluetoothDevice) = repository.connect(device)
     fun connectWithRetry(device: BluetoothDevice) = repository.connectWithRetry(device)
+
+    private fun reconnectLastSavedDevice() {
+        val target = _savedDevices.value.firstOrNull() ?: return
+        val bluetoothManager = getApplication<Application>().getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val bluetoothAdapter = bluetoothManager.adapter
+        val bonded = findBondedDeviceByNameOrAddress(bluetoothAdapter, target.name, target.address)
+        if (bonded != null) {
+            repository.connectWithRetry(bonded)
+        }
+    }
+
     fun disconnectKeyboard() {
         repository.disconnect()
     }
@@ -1007,7 +1220,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun unlockMac() {
         val pass = _macPassword.value.ifBlank { _unlockPassword.value }
-        repository.unlockMac(pass)
+        repository.unlockMac(
+            password = pass,
+            pressEnterBefore = _macAutofillPreEnter.value,
+            pressEnterAfter = _macAutofillPostEnter.value
+        )
+    }
+
+    fun sendStoredMacPasswordToHost(): String? {
+        if (connectionState.value !is HidDeviceManager.ConnectionState.Connected) {
+            return "Connect to your Mac first."
+        }
+
+        val stored = secureStorage.getMacPassword().orEmpty().ifBlank { secureStorage.getUnlockPassword().orEmpty() }
+        if (stored.isBlank()) {
+            return "Set your Mac password in Settings first."
+        }
+
+        repository.unlockMac(
+            password = stored,
+            pressEnterBefore = _macAutofillPreEnter.value,
+            pressEnterAfter = _macAutofillPostEnter.value
+        )
+        return null
     }
 
     fun sendMacro(macro: String) {
@@ -1395,6 +1630,189 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         try {
             val json = JSONObject(jsonStr)
             when (json.optString("type")) {
+                "LIST_FILES" -> {
+                    sendCurrentFileListToPeer()
+                }
+                "DOWNLOAD_FILE" -> {
+                    val path = json.optString("path", "")
+                    val requestId = json.optString("requestId", "")
+                    if (path.isBlank()) {
+                        webRtcManager.sendData(
+                            JSONObject().apply {
+                                put("type", "FILE_DOWNLOAD_ACK")
+                                put("requestId", requestId)
+                                put("accepted", false)
+                                put("message", "Download path missing.")
+                            }.toString()
+                        )
+                        webRtcManager.sendData(
+                            JSONObject().apply {
+                                put("type", "ERROR")
+                                put("message", "Download path missing.")
+                            }.toString()
+                        )
+                    } else {
+                        val targetUri = _sharedFiles.value.firstOrNull { it.toString() == path } ?: runCatching { Uri.parse(path) }.getOrNull()
+                        if (targetUri == null) {
+                            webRtcManager.sendData(
+                                JSONObject().apply {
+                                    put("type", "FILE_DOWNLOAD_ACK")
+                                    put("requestId", requestId)
+                                    put("accepted", false)
+                                    put("message", "Requested file is not available on phone.")
+                                }.toString()
+                            )
+                            webRtcManager.sendData(
+                                JSONObject().apply {
+                                    put("type", "ERROR")
+                                    put("message", "Requested file is not available on phone.")
+                                }.toString()
+                            )
+                        } else {
+                            webRtcManager.sendData(
+                                JSONObject().apply {
+                                    put("type", "FILE_DOWNLOAD_ACK")
+                                    put("requestId", requestId)
+                                    put("accepted", true)
+                                }.toString()
+                            )
+                            viewModelScope.launch(Dispatchers.IO) {
+                                streamSharedFileOverP2p(targetUri)
+                            }
+                        }
+                    }
+                }
+                "UPLOAD_START" -> {
+                    val transferId = json.optString("transferId", "")
+                    val fileName = json.optString("fileName", "incoming_file")
+                    val mimeType = json.optString("mimeType", "application/octet-stream")
+                    val sizeBytes = json.optLong("sizeBytes", 0L)
+
+                    if (transferId.isBlank()) {
+                        webRtcManager.sendData(
+                            JSONObject().apply {
+                                put("type", "ERROR")
+                                put("message", "Upload rejected: missing transfer id.")
+                            }.toString()
+                        )
+                        return
+                    }
+
+                    val safeName = fileName.replace(Regex("[^a-zA-Z0-9._ -]"), "_")
+                    val temp = File(getApplication<Application>().cacheDir, "p2p_upload_${transferId}")
+                    runCatching { if (temp.exists()) temp.delete() }
+
+                    try {
+                        val stream = FileOutputStream(temp)
+                        incomingUploadSessions[transferId] = IncomingUploadSession(
+                            transferId = transferId,
+                            fileName = safeName,
+                            mimeType = mimeType,
+                            sizeBytes = sizeBytes,
+                            tempFile = temp,
+                            output = stream
+                        )
+
+                        webRtcManager.sendData(
+                            JSONObject().apply {
+                                put("type", "UPLOAD_ACK")
+                                put("transferId", transferId)
+                                put("fileName", safeName)
+                            }.toString()
+                        )
+                    } catch (e: Exception) {
+                        webRtcManager.sendData(
+                            JSONObject().apply {
+                                put("type", "ERROR")
+                                put("message", "Upload start failed: ${e.message ?: "unknown"}")
+                            }.toString()
+                        )
+                    }
+                }
+                "UPLOAD_CHUNK" -> {
+                    val transferId = json.optString("transferId", "")
+                    val session = incomingUploadSessions[transferId]
+                    if (session == null) {
+                        webRtcManager.sendData(
+                            JSONObject().apply {
+                                put("type", "ERROR")
+                                put("message", "Upload chunk rejected: unknown transfer.")
+                            }.toString()
+                        )
+                        return
+                    }
+
+                    val b64 = json.optString("dataBase64", "")
+                    if (b64.isEmpty()) return
+
+                    try {
+                        val chunk = Base64.decode(b64, Base64.DEFAULT)
+                        session.output.write(chunk)
+                        session.bytesReceived += chunk.size
+
+                        if (session.bytesReceived % (64 * 1024) < chunk.size) {
+                            webRtcManager.sendData(
+                                JSONObject().apply {
+                                    put("type", "UPLOAD_PROGRESS")
+                                    put("transferId", transferId)
+                                    put("fileName", session.fileName)
+                                    put("bytesReceived", session.bytesReceived)
+                                    put("sizeBytes", session.sizeBytes)
+                                }.toString()
+                            )
+                        }
+                    } catch (e: Exception) {
+                        cleanupIncomingUpload(transferId)
+                        webRtcManager.sendData(
+                            JSONObject().apply {
+                                put("type", "ERROR")
+                                put("message", "Upload chunk failed: ${e.message ?: "unknown"}")
+                            }.toString()
+                        )
+                    }
+                }
+                "UPLOAD_END" -> {
+                    val transferId = json.optString("transferId", "")
+                    val session = incomingUploadSessions[transferId]
+                    if (session == null) {
+                        webRtcManager.sendData(
+                            JSONObject().apply {
+                                put("type", "ERROR")
+                                put("message", "Upload end rejected: unknown transfer.")
+                            }.toString()
+                        )
+                        return
+                    }
+
+                    try {
+                        session.output.flush()
+                        session.output.close()
+
+                        val savedUri = saveIncomingUploadToDownloads(session)
+                        addSharedFile(savedUri)
+
+                        webRtcManager.sendData(
+                            JSONObject().apply {
+                                put("type", "UPLOAD_DONE")
+                                put("transferId", transferId)
+                                put("fileName", session.fileName)
+                                put("sizeBytes", session.bytesReceived)
+                            }.toString()
+                        )
+
+                        // Push latest list immediately so web UI reflects new file without waiting.
+                        sendCurrentFileListToPeer()
+                    } catch (e: Exception) {
+                        webRtcManager.sendData(
+                            JSONObject().apply {
+                                put("type", "ERROR")
+                                put("message", "Upload finalize failed: ${e.message ?: "unknown"}")
+                            }.toString()
+                        )
+                    } finally {
+                        cleanupIncomingUpload(transferId)
+                    }
+                }
                 "FILE_LIST" -> {
                     val filesArray = json.getJSONArray("files")
                     val list = mutableListOf<RemoteFile>()
@@ -1412,10 +1830,168 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _remoteFiles.value = list
                     _isRemoteLoading.value = false
                 }
+                "NOW_PLAYING" -> {
+                    val title = json.optString("title", "No track")
+                    val artist = json.optString("artist", "Unknown artist")
+                    val album = json.optString("album", "")
+                    val artwork = json.optString("artworkBase64", "").takeIf { it.isNotBlank() }
+                    _nowPlayingTitle.value = title.ifBlank { "No track" }
+                    _nowPlayingArtist.value = artist.ifBlank { "Unknown artist" }
+                    _nowPlayingAlbum.value = album
+                    _nowPlayingArtworkBase64.value = artwork
+                    _nowPlayingTimestamp.value = System.currentTimeMillis()
+                }
             }
         } catch (e: Exception) {
             _isRemoteLoading.value = false
         }
+    }
+
+    private fun cleanupIncomingUpload(transferId: String) {
+        val session = incomingUploadSessions.remove(transferId) ?: return
+        runCatching { session.output.close() }
+        runCatching { if (session.tempFile.exists()) session.tempFile.delete() }
+    }
+
+    private fun saveIncomingUploadToDownloads(session: IncomingUploadSession): Uri {
+        val app = getApplication<Application>()
+        val resolver = app.contentResolver
+        val now = System.currentTimeMillis()
+
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, session.fileName)
+            put(MediaStore.MediaColumns.MIME_TYPE, session.mimeType)
+            put(MediaStore.MediaColumns.DATE_ADDED, now / 1000)
+            put(MediaStore.MediaColumns.DATE_MODIFIED, now / 1000)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Rabit")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+        }
+
+        val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        val itemUri = resolver.insert(collection, values)
+            ?: throw IllegalStateException("Unable to create destination in Downloads")
+
+        resolver.openOutputStream(itemUri)?.use { out ->
+            session.tempFile.inputStream().use { input ->
+                input.copyTo(out)
+            }
+        } ?: throw IllegalStateException("Unable to open destination output stream")
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val doneValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }
+            resolver.update(itemUri, doneValues, null, null)
+        }
+
+        return itemUri
+    }
+
+    private suspend fun streamSharedFileOverP2p(uri: Uri) {
+        try {
+            val resolver = getApplication<Application>().contentResolver
+            val (name, size) = resolveSharedFileMetadata(uri)
+            val mime = resolver.getType(uri) ?: "application/octet-stream"
+            val transferId = UUID.randomUUID().toString()
+
+            webRtcManager.sendData(
+                JSONObject().apply {
+                    put("type", "FILE_DOWNLOAD_START")
+                    put("transferId", transferId)
+                    put("name", name)
+                    put("sizeBytes", size)
+                    put("mimeType", mime)
+                }.toString()
+            )
+
+            val stream = resolver.openInputStream(uri)
+            if (stream == null) {
+                webRtcManager.sendData(
+                    JSONObject().apply {
+                        put("type", "ERROR")
+                        put("message", "Unable to open file for transfer.")
+                    }.toString()
+                )
+                return
+            }
+
+            var sent = 0L
+            // Keep chunks very small to avoid DataChannel backpressure/stalls in browsers.
+            val buffer = ByteArray(4 * 1024)
+
+            stream.use { input ->
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+
+                    val chunk = buffer.copyOf(read)
+                    webRtcManager.sendData(
+                        JSONObject().apply {
+                            put("type", "FILE_DOWNLOAD_CHUNK")
+                            put("transferId", transferId)
+                            put("dataBase64", Base64.encodeToString(chunk, Base64.NO_WRAP))
+                        }.toString()
+                    )
+                    sent += read
+
+                    if (sent % (64 * 1024) < read) {
+                        webRtcManager.sendData(
+                            JSONObject().apply {
+                                put("type", "FILE_DOWNLOAD_PROGRESS")
+                                put("transferId", transferId)
+                                put("bytesSent", sent)
+                                put("sizeBytes", size)
+                            }.toString()
+                        )
+                    }
+
+                    delay(2)
+                }
+            }
+
+            webRtcManager.sendData(
+                JSONObject().apply {
+                    put("type", "FILE_DOWNLOAD_END")
+                    put("transferId", transferId)
+                    put("bytesSent", sent)
+                    put("sizeBytes", size)
+                }.toString()
+            )
+        } catch (e: Exception) {
+            webRtcManager.sendData(
+                JSONObject().apply {
+                    put("type", "ERROR")
+                    put("message", "File transfer failed: ${e.message ?: "unknown error"}")
+                }.toString()
+            )
+        }
+    }
+
+    private fun sendCurrentFileListToPeer() {
+        val files = JSONArray()
+        _sharedFiles.value.forEach { uri ->
+            val (name, size) = resolveSharedFileMetadata(uri)
+            val ext = name.substringAfterLast('.', "").takeIf { it != name } ?: ""
+            files.put(
+                JSONObject().apply {
+                    put("name", name)
+                    put("path", uri.toString())
+                    put("size", size)
+                    put("isFolder", false)
+                    put("extension", ext)
+                    put("modifiedTime", System.currentTimeMillis())
+                }
+            )
+        }
+
+        webRtcManager.sendData(
+            JSONObject().apply {
+                put("type", "FILE_LIST")
+                put("files", files)
+            }.toString()
+        )
     }
 
     private fun updateRepositorySpeed(speed: String) {
@@ -1430,27 +2006,121 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         HidDeviceManager.getInstance(getApplication()).typingDelay = delay
     }
 
+    fun executeDuckyScript(script: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val lines = script.lines().map { it.trim() }.filter { it.isNotBlank() && !it.uppercase().startsWith("REM ") }
+            var defaultDelay = 10L
+            for (line in lines) {
+                val parts = line.split(" ", limit = 2)
+                val cmd = parts[0].uppercase()
+                val arg = if (parts.size > 1) parts[1] else ""
+
+                when (cmd) {
+                    "DEFAULTDELAY" -> defaultDelay = arg.toLongOrNull() ?: defaultDelay
+                    "DELAY" -> delay(arg.toLongOrNull() ?: defaultDelay)
+                    "STRING" -> repository.sendText(arg)
+                    "ENTER" -> repository.sendKey(HidKeyCodes.KEY_ENTER)
+                    "TAB" -> repository.sendKey(HidKeyCodes.KEY_TAB)
+                    "SPACE" -> repository.sendKey(HidKeyCodes.KEY_SPACE)
+                    "UP", "UPARROW" -> repository.sendKey(HidKeyCodes.KEY_UP)
+                    "DOWN", "DOWNARROW" -> repository.sendKey(HidKeyCodes.KEY_DOWN)
+                    "GUI", "WINDOWS", "COMMAND" -> {
+                        val uArg = arg.uppercase()
+                        val key = if (uArg == "SPACE") HidKeyCodes.KEY_SPACE 
+                        else if (uArg == "ENTER") HidKeyCodes.KEY_ENTER 
+                        else if (uArg == "TAB") HidKeyCodes.KEY_TAB
+                        else if (uArg.length == 1) {
+                            try {
+                                val field = HidKeyCodes::class.java.getDeclaredField("KEY_${uArg}")
+                                field.get(null) as Byte
+                            } catch (e: Exception) { HidKeyCodes.KEY_NONE }
+                        } else HidKeyCodes.KEY_NONE
+                        
+                        repository.sendKey(key, HidKeyCodes.MODIFIER_LEFT_GUI)
+                    }
+                    "CTRL", "CONTROL" -> {
+                        val uArg = arg.uppercase()
+                        val key = if (uArg == "ALT") HidKeyCodes.KEY_NONE
+                        else if (uArg.length == 1) {
+                            try {
+                                val field = HidKeyCodes::class.java.getDeclaredField("KEY_${uArg}")
+                                field.get(null) as Byte
+                            } catch (e: Exception) { HidKeyCodes.KEY_NONE }
+                        } else HidKeyCodes.KEY_NONE
+                        
+                        repository.sendKey(key, HidKeyCodes.MODIFIER_LEFT_CTRL)
+                    }
+                    "ALT" -> {
+                        val uArg = arg.uppercase()
+                        val key = if (uArg == "TAB") HidKeyCodes.KEY_TAB 
+                        else if (uArg.length == 1) {
+                            try {
+                                val field = HidKeyCodes::class.java.getDeclaredField("KEY_${uArg}")
+                                field.get(null) as Byte
+                            } catch (e: Exception) { HidKeyCodes.KEY_NONE }
+                        } else HidKeyCodes.KEY_NONE
+                        
+                        repository.sendKey(key, HidKeyCodes.MODIFIER_LEFT_ALT)
+                    }
+                    "MAC_STEALTH" -> {
+                        // Shortcut block to quickly run commands invisibly on Mac
+                        repository.sendKey(HidKeyCodes.KEY_SPACE, HidKeyCodes.MODIFIER_LEFT_GUI)
+                        delay(300)
+                        repository.sendText("terminal")
+                        delay(200)
+                        repository.sendKey(HidKeyCodes.KEY_ENTER)
+                        delay(500)
+                        repository.sendKey(HidKeyCodes.KEY_M, HidKeyCodes.MODIFIER_LEFT_GUI) // minimize it immediately
+                        delay(200)
+                        repository.sendText(arg) // target payload
+                        repository.sendKey(HidKeyCodes.KEY_ENTER)
+                        delay(300)
+                        repository.sendKey(HidKeyCodes.KEY_Q, HidKeyCodes.MODIFIER_LEFT_GUI) // quit terminal cleanly
+                    }
+                    "SHIFT" -> {
+                        val keyMap = mapOf("ENTER" to HidKeyCodes.KEY_ENTER, "TAB" to HidKeyCodes.KEY_TAB)
+                        val key = keyMap[arg.uppercase()] ?: HidKeyCodes.KEY_NONE
+                        repository.sendKey(key, HidKeyCodes.MODIFIER_LEFT_SHIFT)
+                    }
+                    else -> {
+                        // Fallback: If it's a raw string, type it out and hit enter (simplified terminal entry)
+                        repository.sendText(line)
+                        repository.sendKey(HidKeyCodes.KEY_ENTER)
+                    }
+                }
+                delay(defaultDelay)
+            }
+        }
+    }
+
     private fun executeMacro2Script(script: String, cooldownMs: Long = 0L) {
         val commands = script
             .split("\n", "&&")
             .map { it.trim() }
             .filter { it.isNotBlank() }
 
+        fun extractArg(cmd: String, keyword: String): String? {
+            val normalized = cmd.trim()
+            val prefix = "$keyword("
+            if (!normalized.startsWith(prefix, ignoreCase = true) || !normalized.endsWith(")")) return null
+            return normalized.substring(prefix.length, normalized.length - 1)
+        }
+
         viewModelScope.launch {
             for (cmd in commands) {
                 when {
-                    cmd.startsWith("WAIT(", ignoreCase = true) && cmd.endsWith(")") -> {
-                        val ms = cmd.removePrefix("WAIT(").removeSuffix(")").trim().toLongOrNull() ?: 120L
+                    extractArg(cmd, "WAIT") != null -> {
+                        val ms = extractArg(cmd, "WAIT")?.trim()?.toLongOrNull() ?: 120L
                         delay(ms.coerceIn(0L, 60_000L))
                     }
-                    cmd.startsWith("TEXT(", ignoreCase = true) && cmd.endsWith(")") -> {
-                        repository.sendText(cmd.removePrefix("TEXT(").removeSuffix(")"))
+                    extractArg(cmd, "TEXT") != null -> {
+                        repository.sendText(extractArg(cmd, "TEXT") ?: "")
                     }
-                    cmd.startsWith("KEY(", ignoreCase = true) && cmd.endsWith(")") -> {
-                        executeKeyCombo(cmd.removePrefix("KEY(").removeSuffix(")"))
+                    extractArg(cmd, "KEY") != null -> {
+                        executeKeyCombo(extractArg(cmd, "KEY") ?: "")
                     }
-                    cmd.startsWith("MEDIA(", ignoreCase = true) && cmd.endsWith(")") -> {
-                        executeSpecialKey(cmd.removePrefix("MEDIA(").removeSuffix(")"))
+                    extractArg(cmd, "MEDIA") != null -> {
+                        executeSpecialKey(extractArg(cmd, "MEDIA") ?: "")
                     }
                     else -> {
                         repository.sendText(cmd)
@@ -1537,9 +2207,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        RabitNetworkServer.audioStreamStartReceiver = null
+        RabitNetworkServer.audioStreamChunkReceiver = null
+        RabitNetworkServer.audioStreamStopReceiver = null
+        wifiAudioSink.release()
         disconnectSsh()
         prefs.unregisterOnSharedPreferenceChangeListener(prefListener)
         super.onCleared()
+    }
+
+    private fun hasBluetoothConnectPermission(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun findBondedDeviceByName(bluetoothAdapter: BluetoothAdapter?, name: String): BluetoothDevice? {
+        if (!hasBluetoothConnectPermission(getApplication())) return null
+        return try {
+            bluetoothAdapter?.bondedDevices?.find { it.name == name }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun findBondedDeviceByNameOrAddress(bluetoothAdapter: BluetoothAdapter?, name: String, address: String): BluetoothDevice? {
+        if (!hasBluetoothConnectPermission(getApplication())) return null
+        return try {
+            bluetoothAdapter?.bondedDevices?.find { it.name == name || (address.isNotBlank() && it.address == address) }
+        } catch (_: Exception) {
+            null
+        }
     }
 }
 

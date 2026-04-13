@@ -186,7 +186,8 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                         onConnected = { navController.navigate("keyboard") },
                         onNavigateToSettings = { navController.navigate("settings") },
                         onNavigateToAssistant = { if (featureAssistantVisible) navController.navigate("assistant") },
-                        onNavigateToWebBridge = { if (featureWebBridgeVisible) navController.navigate("web_bridge") }
+                        onNavigateToWebBridge = { if (featureWebBridgeVisible) navController.navigate("web_bridge") },
+                        onNavigateToInjector = { navController.navigate("injector") }
                     )
                 }
                 composable("keyboard") {
@@ -214,6 +215,18 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                         onNavigateToSshTerminal = { if (featureSshTerminalVisible) navController.navigate("ssh_terminal") }
                     )
                 }
+                composable("media_deck") {
+                    com.example.rabit.ui.media.MediaControlDeckScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable("airplay_receiver") {
+                    com.example.rabit.ui.airplay.AirPlayReceiverScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
                 composable("wake_on_lan") {
                     com.example.rabit.ui.automation.WakeOnLanScreen(
                         viewModel = viewModel,
@@ -231,8 +244,18 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                         viewModel = assistantViewModel,
                         mainViewModel = viewModel,
                         onBack = { navController.popBackStack() },
-                        onNavigateToSettings = { navController.navigate("settings") },
+                        onNavigateToSettings = {
+                            navController.navigate("settings") {
+                                launchSingleTop = true
+                            }
+                        },
                         onNavigateToKeyboard = { navController.navigate("keyboard") }
+                    )
+                }
+                composable("injector") {
+                    com.example.rabit.ui.automation.InjectorScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() }
                     )
                 }
                 composable("settings") {
@@ -273,7 +296,7 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                 navController.navigate(target) {
                     popUpTo("keyboard") { saveState = true }
                     launchSingleTop = true
-                    restoreState = true
+                    restoreState = target != "assistant"
                 }
             },
             featureWebBridgeVisible = featureWebBridgeVisible,
@@ -356,7 +379,7 @@ fun BluetoothPermissions(content: @Composable () -> Unit) {
             ) {
                 Icon(
                     Icons.Default.Bluetooth,
-                    contentDescription = null,
+                    contentDescription = "Bluetooth permission icon",
                     tint = Color(0xFF0A84FF),
                     modifier = Modifier.size(48.dp)
                 )

@@ -127,7 +127,7 @@ fun WebBridgeScreen(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Platinum)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("WEB BRIDGE", color = Platinum, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                Text("WEB SHARE", color = Platinum, fontSize = 18.sp, fontWeight = FontWeight.Black)
             }
 
             // Glassmorphism Status Card
@@ -169,7 +169,7 @@ fun WebBridgeScreen(
                         )
                         
                         Text(
-                            if (isRunning) "Serving control interface locally" else "Bridge is currently offline",
+                            if (isRunning) "Serving control interface locally" else "Web Share is currently offline",
                             color = Silver,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(top = 4.dp)
@@ -187,7 +187,7 @@ fun WebBridgeScreen(
                             elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
                         ) {
                             Text(
-                                if (isRunning) "TERMINATE BRIDGE" else "IGNITE BRIDGE", 
+                                if (isRunning) "STOP WEB SHARE" else "START WEB SHARE", 
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 1.sp
                             )
@@ -199,8 +199,8 @@ fun WebBridgeScreen(
             if (isRunning) {
                 // Connection Info Section
                 val localUrl = if (localIp.isNotEmpty() && localIp != "0.0.0.0") 
-                    "http://$localIp:8765" else "Identifying network..."
-                val gatewayBaseUrl = "https://zoom-sagar.web.app"
+                    "http://$localIp:${RabitNetworkServer.PORT}" else "Identifying network..."
+                val gatewayBaseUrl = "https://rabit-260412-183123.web.app"
                 val p2pUrl = if (!peerId.isNullOrEmpty() && !cloudUnavailable) "$gatewayBaseUrl/?peer=$peerId" else gatewayBaseUrl
                 
                 // Status indicator for P2P state
@@ -228,6 +228,26 @@ fun WebBridgeScreen(
                                 Text("SETUP CLOUD")
                             }
                         }
+                    }
+                }
+                
+                // Instructions Card
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    color = AccentBlue.copy(alpha = 0.05f),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.2f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Info, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text("How to connect", color = Platinum, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("1. Connect Mac/PC to the same Wi-Fi network.", color = Silver, fontSize = 12.sp)
+                        Text("2. Type the link below into your web browser.", color = Silver, fontSize = 12.sp)
+                        Text("3. Enter the 4-digit Security Passcode above to login.", color = Silver, fontSize = 12.sp)
                     }
                 }
                 

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -19,6 +20,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import java.net.UnknownHostException
 import java.io.IOException
+import java.security.MessageDigest
+import kotlin.coroutines.resume
 
 enum class ModelLoadState { IDLE, DOWNLOADING, COPYING, INITIALIZING, READY, ERROR }
 
@@ -46,6 +49,8 @@ class LocalLlmManager(private val context: Context) {
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
 
     private var currentDownloadId: Long? = null
+    @Volatile private var streamCallback: ((String, Boolean) -> Unit)? = null
+    @Volatile private var streamErrorCallback: ((String) -> Unit)? = null
 
     val availableModels = listOf(
         ModelInfo(
@@ -149,6 +154,12 @@ class LocalLlmManager(private val context: Context) {
                 .setMaxTokens(1024)
                 .setTemperature(0.7f)
                 .setTopK(40)
+                .setResultListener { partial, done ->
+                    streamCallback?.invoke(partial ?: "", done)
+                }
+                .setErrorListener { error ->
+                    streamErrorCallback?.invoke(error.message ?: "Unknown generation error")
+                }
                 .build()
 
             llmInference = LlmInference.createFromOptions(context, options)
@@ -207,6 +218,51 @@ class LocalLlmManager(private val context: Context) {
             val msg = "Generation error: ${e.message}"
             _lastError.value = msg
             msg
+        }
+    }
+
+    suspend fun generateResponseStreaming(prompt: String, onPartial: (String) -> Unit): String = withContext(Dispatchers.IO) {
+        val inference = llmInference
+        if (inference == null) {
+            return@withContext _lastError.value ?: "Error: model not initialized."
+        }
+
+        suspendCancellableCoroutine { continuation ->
+            var assembled = ""
+
+            streamCallback = { chunk, done ->
+                if (chunk.startsWith(assembled)) {
+                    assembled = chunk
+                } else {
+                    assembled += chunk
+                }
+                onPartial(assembled)
+                if (done && continuation.isActive) {
+                    streamCallback = null
+                    streamErrorCallback = null
+                    continuation.resume(assembled)
+                }
+            }
+
+            streamErrorCallback = { message ->
+                if (continuation.isActive) {
+                    streamCallback = null
+                    streamErrorCallback = null
+                    val errorText = "Generation error: $message"
+                    _lastError.value = errorText
+                    continuation.resume(errorText)
+                }
+            }
+
+            try {
+                inference.generateResponseAsync(prompt)
+            } catch (e: Exception) {
+                streamCallback = null
+                streamErrorCallback = null
+                val msg = "Generation error: ${e.message}"
+                _lastError.value = msg
+                continuation.resume(msg)
+            }
         }
     }
 
@@ -375,13 +431,27 @@ class LocalLlmManager(private val context: Context) {
     private fun copyFileToInternal(uri: Uri): String? {
         return try {
             val inputStream = context.contentResolver.openInputStream(uri) ?: return null
-            val destFile = File(context.filesDir, "mediapipe_model.bin")
+
+            val name = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else "model.bin"
+            } ?: "model.bin"
+
+            val safeName = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+            val hash = sha1(uri.toString()).take(12)
+            val modelsDir = File(context.filesDir, "models/imported").apply { mkdirs() }
+            val destFile = File(modelsDir, "${hash}_$safeName")
 
             // Determine total size for progress
             val totalBytes = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                 val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
                 if (cursor.moveToFirst() && sizeIndex >= 0) cursor.getLong(sizeIndex) else -1L
             } ?: -1L
+
+            if (destFile.exists() && destFile.length() > 100_000_000L && (totalBytes <= 0L || destFile.length() == totalBytes)) {
+                _downloadProgress.value = 1f
+                return destFile.absolutePath
+            }
 
             _loadState.value = ModelLoadState.COPYING
             _downloadProgress.value = 0f
@@ -407,6 +477,11 @@ class LocalLlmManager(private val context: Context) {
             _lastError.value = "Failed to copy model file: ${e.message}"
             null
         }
+    }
+
+    private fun sha1(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-1")
+        return digest.digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 
     fun close() {

@@ -140,8 +140,8 @@ class RabitQsTile : TileService() {
             )
             startActivityAndCollapse(pendingIntent)
         } else {
-            @Suppress("DEPRECATION")
-            startActivityAndCollapse(intent)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
         }
     }
 
@@ -154,17 +154,23 @@ class RabitQsTile : TileService() {
             is HidDeviceManager.ConnectionState.Connected -> {
                 tile.state = Tile.STATE_ACTIVE
                 tile.label = "Rabit Pro"
-                tile.subtitle = state.deviceName
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    tile.subtitle = state.deviceName
+                }
             }
             is HidDeviceManager.ConnectionState.Connecting -> {
                 tile.state = Tile.STATE_ACTIVE
                 tile.label = "Rabit Pro"
-                tile.subtitle = "Connecting…"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    tile.subtitle = "Connecting..."
+                }
             }
             is HidDeviceManager.ConnectionState.Disconnected -> {
                 tile.state = Tile.STATE_INACTIVE
                 tile.label = "Rabit Pro"
-                tile.subtitle = "Tap to connect"
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    tile.subtitle = "Tap to connect"
+                }
             }
         }
         tile.updateTile()

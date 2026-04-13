@@ -31,7 +31,9 @@ class GyroscopeAirMouse(context: Context) : SensorEventListener {
     // Shake detection
     var onShakeDetected: (() -> Unit)? = null
     private var lastShakeTime = 0L
-    private val SHAKE_THRESHOLD = 15.0f // m/s^2 (Optimized for Pro responsiveness)
+    private var strongShakeSpikeCount = 0
+    private var lastStrongSpikeTime = 0L
+    private val SHAKE_THRESHOLD = 22.5f // Require strong movement to avoid accidental disconnects.
 
     // Calibration state
     private var hasCalibration = false
@@ -165,8 +167,16 @@ class GyroscopeAirMouse(context: Context) : SensorEventListener {
         val acceleration = kotlin.math.sqrt(x*x + y*y + z*z) - SensorManager.GRAVITY_EARTH
         if (acceleration > SHAKE_THRESHOLD) {
             val now = System.currentTimeMillis()
-            if (now - lastShakeTime > 800) {
+            if (now - lastStrongSpikeTime > 900) {
+                strongShakeSpikeCount = 0
+            }
+            strongShakeSpikeCount += 1
+            lastStrongSpikeTime = now
+
+            // Require two strong spikes close together so light shakes do not trigger.
+            if (strongShakeSpikeCount >= 2 && now - lastShakeTime > 1500) {
                 lastShakeTime = now
+                strongShakeSpikeCount = 0
                 onShakeDetected?.invoke()
             }
         }

@@ -35,7 +35,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object RabitNetworkServer {
 
-    const val PORT = 8765
+    const val PORT = 8080
     private const val TAG = "RabitNetworkServer"
 
     private var server: ApplicationEngine? = null
@@ -48,6 +48,10 @@ object RabitNetworkServer {
     // Universal Clipboard Callbacks
     var clipboardProvider: (() -> String)? = null
     var clipboardReceiver: ((String) -> Unit)? = null
+    var nowPlayingReceiver: ((NowPlayingPayload) -> Unit)? = null
+    var audioStreamStartReceiver: ((AudioStreamStartPayload) -> Unit)? = null
+    var audioStreamChunkReceiver: ((AudioStreamChunkPayload) -> Unit)? = null
+    var audioStreamStopReceiver: ((AudioStreamStopPayload) -> Unit)? = null
 
     @Serializable
     data class ApiResponse(val success: Boolean, val message: String)
@@ -87,6 +91,32 @@ object RabitNetworkServer {
 
     @Serializable
     data class ClipboardHistoryPayload(val items: List<String>)
+
+    @Serializable
+    data class NowPlayingPayload(
+        val title: String = "No track",
+        val artist: String = "Unknown artist",
+        val album: String = "",
+        val artworkBase64: String? = null,
+        val source: String = "desktop-helper"
+    )
+
+    @Serializable
+    data class AudioStreamStartPayload(
+        val sampleRate: Int = 44100,
+        val channels: Int = 2,
+        val source: String = "desktop-helper"
+    )
+
+    @Serializable
+    data class AudioStreamChunkPayload(
+        val pcm16leBase64: String
+    )
+
+    @Serializable
+    data class AudioStreamStopPayload(
+        val reason: String = "end"
+    )
 
     @Serializable
     data class TransferJob(
@@ -258,8 +288,14 @@ object RabitNetworkServer {
         let lastKnownLocalClipboard = "";
         let phoneClipboard = "";
 
+        function generateFallbackId() {
+            const hasUuid = typeof crypto !== 'undefined' && crypto && typeof crypto.randomUUID === 'function';
+            if (hasUuid) return 'device-' + crypto.randomUUID();
+            return 'device-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+        }
+
         if (!deviceId) {
-            deviceId = 'device-' + crypto.randomUUID();
+            deviceId = generateFallbackId();
             localStorage.setItem('rabit_device_id', deviceId);
         }
 
@@ -636,6 +672,62 @@ object RabitNetworkServer {
                     call.respond(HttpStatusCode.OK, ApiResponse(true, "Clipboard history cleared"))
                 }
 
+                post("/now-playing") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@post
+                    }
+                    try {
+                        val payload = call.receive<NowPlayingPayload>()
+                        nowPlayingReceiver?.invoke(payload)
+                        call.respond(HttpStatusCode.OK, ApiResponse(true, "Now playing updated"))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiResponse(false, "Invalid payload"))
+                    }
+                }
+
+                post("/audio/start") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@post
+                    }
+                    try {
+                        val payload = call.receive<AudioStreamStartPayload>()
+                        audioStreamStartReceiver?.invoke(payload)
+                        call.respond(HttpStatusCode.OK, ApiResponse(true, "Audio stream started"))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiResponse(false, "Invalid payload"))
+                    }
+                }
+
+                post("/audio/chunk") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@post
+                    }
+                    try {
+                        val payload = call.receive<AudioStreamChunkPayload>()
+                        audioStreamChunkReceiver?.invoke(payload)
+                        call.respond(HttpStatusCode.OK, ApiResponse(true, "Audio chunk accepted"))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiResponse(false, "Invalid payload"))
+                    }
+                }
+
+                post("/audio/stop") {
+                    if (!call.validateToken()) {
+                        call.respond(HttpStatusCode.Unauthorized, ApiResponse(false, "Unauthorized"))
+                        return@post
+                    }
+                    try {
+                        val payload = call.receive<AudioStreamStopPayload>()
+                        audioStreamStopReceiver?.invoke(payload)
+                        call.respond(HttpStatusCode.OK, ApiResponse(true, "Audio stream stopped"))
+                    } catch (e: Exception) {
+                        call.respond(HttpStatusCode.BadRequest, ApiResponse(false, "Invalid payload"))
+                    }
+                }
+
                 // ───── Feature: Bidirectional Sharing (Phone -> Mac) ─────
                 get("/shared-files") {
                     if (!call.validateToken()) {
@@ -954,7 +1046,14 @@ object RabitNetworkServer {
         val uri = when (kind) {
             "photo" -> ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, rawId)
             "video" -> ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, rawId)
-            "file" -> ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, rawId)
+            "file" -> {
+                val downloadsUri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                } else {
+                    Uri.parse("content://downloads/public_downloads")
+                }
+                ContentUris.withAppendedId(downloadsUri, rawId)
+            }
             else -> return null
         }
 

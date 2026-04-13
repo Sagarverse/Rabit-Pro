@@ -3,6 +3,7 @@ package com.example.rabit.ui.assistant
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.rabit.domain.model.gemini.GeminiRequest
@@ -110,7 +111,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     private val _attachedFiles = MutableStateFlow<List<AttachedFile>>(emptyList())
     val attachedFiles = _attachedFiles.asStateFlow()
     
-    private val _selectedModelName = MutableStateFlow(prefs.getString("selected_model", "Gemini Pro") ?: "Gemini Pro")
+    private val _selectedModelName = MutableStateFlow("Gemini Pro")
     val selectedModelName: StateFlow<String> = _selectedModelName.asStateFlow()
 
     val modelLoadState = localLlmManager.loadState
@@ -130,7 +131,16 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isSpeaking = MutableStateFlow(false)
     val isSpeaking = _isSpeaking.asStateFlow()
 
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "selected_model" || key == "is_offline_mode" || key == "active_offline_model_id") {
+            refreshModelTitle()
+        }
+    }
+
     init {
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener)
+        refreshModelTitle()
+
         tts = TextToSpeech(application) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.US
@@ -187,6 +197,21 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         // Restore active model from prefs
         val activeModelId = prefs.getString("active_offline_model_id", null)
         _activeOfflineModel.value = localLlmManager.availableModels.find { it.id == activeModelId }
+        refreshModelTitle()
+    }
+
+    private fun refreshModelTitle() {
+        val isOffline = prefs.getBoolean("is_offline_mode", false)
+        _selectedModelName.value = if (isOffline) {
+            "Offline Model"
+        } else {
+            val raw = prefs.getString("selected_model", "gemini-pro-latest") ?: "gemini-pro-latest"
+            when {
+                raw.contains("flash", ignoreCase = true) -> "Gemini Flash"
+                raw.contains("pro", ignoreCase = true) -> "Gemini Pro"
+                else -> raw
+            }
+        }
     }
 
     private fun saveCurrentSession() {
@@ -345,7 +370,8 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun updateSelectedModel(model: String) {
-        _selectedModelName.value = model
+        prefs.edit().putString("selected_model", model).apply()
+        refreshModelTitle()
     }
 
     fun attachFile(name: String, content: String) {
@@ -413,9 +439,19 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                             val promptWithSystem = if (effectiveSystemPrompt != null) {
                                 "Instruction: $effectiveSystemPrompt\n\nUser: $actualPrompt\n\nAssistant:"
                             } else actualPrompt
-                            
+
+                            val loadingId = loadingMsg.id
                             GeminiResponse(
-                                text = localLlmManager.generateResponse(promptWithSystem),
+                                text = localLlmManager.generateResponseStreaming(promptWithSystem) { partial ->
+                                    val updated = _messages.value.map { msg ->
+                                        if (msg.id == loadingId) {
+                                            msg.copy(content = partial, isLoading = true)
+                                        } else {
+                                            msg
+                                        }
+                                    }
+                                    _messages.value = updated
+                                },
                                 promptText = prompt,
                                 attachedImageUris = imageDataList.map { it.first }
                             )
@@ -534,6 +570,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     override fun onCleared() {
+        prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         tts?.stop()
         tts?.shutdown()
         localLlmManager.close()

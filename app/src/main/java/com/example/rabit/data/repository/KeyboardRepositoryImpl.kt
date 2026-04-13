@@ -92,7 +92,13 @@ class KeyboardRepositoryImpl(context: Context) : KeyboardRepository {
         hidDeviceManager.resumeTextPush()
     }
 
-    override fun unlockMac(password: String) {
-        hidDeviceManager.unlockMac(password)
+    override fun unlockMac(
+        password: String,
+        pressEnterBefore: Boolean,
+        pressEnterAfter: Boolean,
+        preTypeDelayMs: Long,
+        postTypeDelayMs: Long
+    ) {
+        hidDeviceManager.unlockMac(password, pressEnterBefore, pressEnterAfter, preTypeDelayMs, postTypeDelayMs)
     }
 }

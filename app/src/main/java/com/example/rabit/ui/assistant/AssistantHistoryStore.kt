@@ -12,7 +12,7 @@ object AssistantHistoryStore {
 
     fun add(prompt: String, response: String) {
         history.add(0, prompt to response)
-        if (history.size > 50) history.removeLast()
+        if (history.size > 50) history.removeAt(history.lastIndex)
     }
 
     fun clear() {

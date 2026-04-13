@@ -1,14 +1,17 @@
 package com.example.rabit.ui.settings
 
+import android.Manifest
 import android.widget.Toast
 import android.content.Intent
 import android.content.Context
 import android.net.Uri
 import android.bluetooth.BluetoothManager
+import android.content.pm.PackageManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,7 +34,13 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.ContextCompat
 import com.example.rabit.data.secure.EncryptionManager
 import com.example.rabit.ui.MainViewModel
 import com.example.rabit.ui.theme.*
@@ -68,6 +77,7 @@ fun SettingsScreen(
     val proximityCooldownSec by viewModel.proximityCooldownSec.collectAsState()
     val proximityRequirePhoneUnlock by viewModel.proximityRequirePhoneUnlock.collectAsState()
     val proximityTargetAddress by viewModel.proximityTargetAddress.collectAsState()
+    val isMouseJigglerEnabled by viewModel.isMouseJigglerEnabled.collectAsState()
     
     val prefs = remember { context.getSharedPreferences("rabit_prefs", android.content.Context.MODE_PRIVATE) }
 
@@ -86,9 +96,21 @@ fun SettingsScreen(
     var showQrDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
 
-    val bondedDevices = remember {
+    val hasBluetoothConnectPermission = remember {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
+    val bondedDevices = remember(hasBluetoothConnectPermission) {
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        try { manager.adapter?.bondedDevices?.toList().orEmpty() } catch (e: Exception) { emptyList() }
+        if (!hasBluetoothConnectPermission) {
+            emptyList()
+        } else {
+            try { manager.adapter?.bondedDevices?.toList().orEmpty() } catch (e: Exception) { emptyList() }
+        }
     }
 
     Scaffold(
@@ -326,6 +348,15 @@ fun SettingsScreen(
                     }
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsToggleItem(
+                    title = "Wireless Mouse Jiggler (Caffeine)",
+                    subtitle = "Move mouse out of view to keep Mac/PC awake",
+                    icon = Icons.Default.Mouse,
+                    iconColor = AccentBlue,
+                    checked = isMouseJigglerEnabled,
+                    onCheckedChange = { viewModel.setMouseJigglerEnabled(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
                 SettingsClickItem(
                     title = "Quick Test: Lock Screen",
                     subtitle = "Test automation response immediately",
@@ -552,7 +583,11 @@ fun SettingsScreen(
 
                     bondedDevices.forEach { device ->
                         val address = device.address ?: return@forEach
-                        val name = runCatching { device.name }.getOrDefault(null) ?: "Unknown Device"
+                        val name = if (hasBluetoothConnectPermission) {
+                            runCatching { device.name }.getOrDefault(null) ?: "Unknown Device"
+                        } else {
+                            "Unknown Device"
+                        }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -668,7 +703,18 @@ fun SettingsToggleItem(
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                onValueChange = onCheckedChange,
+                role = Role.Switch
+            )
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$title. $subtitle"
+                stateDescription = if (checked) "On" else "Off"
+            }
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -681,7 +727,7 @@ fun SettingsToggleItem(
             }
         }
         Switch(
-            checked = checked, onCheckedChange = onCheckedChange,
+            checked = checked, onCheckedChange = null,
             colors = SwitchDefaults.colors(checkedTrackColor = SuccessGreen, checkedThumbColor = Color.White, uncheckedThumbColor = Color.White, uncheckedTrackColor = SoftGrey)
         )
     }
@@ -696,7 +742,14 @@ fun SettingsClickItem(
     onClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                contentDescription = "$title. $subtitle"
+            }
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         SettingsIconBadge(icon = icon, backgroundColor = iconColor)
@@ -711,7 +764,10 @@ fun SettingsClickItem(
 
 @Composable
 fun ContactItem(icon: ImageVector, text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = text }
+    ) {
         Icon(icon, contentDescription = null, tint = Silver, modifier = Modifier.size(16.dp))
         Spacer(modifier = Modifier.width(10.dp))
         Text(text, color = Platinum, fontSize = 14.sp)

@@ -32,5 +32,11 @@ interface KeyboardRepository {
     fun stopTextPush()
     fun pauseTextPush()
     fun resumeTextPush()
-    fun unlockMac(password: String)
+    fun unlockMac(
+        password: String,
+        pressEnterBefore: Boolean = true,
+        pressEnterAfter: Boolean = true,
+        preTypeDelayMs: Long = 1500L,
+        postTypeDelayMs: Long = 800L
+    )
 }

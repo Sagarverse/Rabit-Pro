@@ -351,9 +351,23 @@
   </main>
 
   <script>
+    function createDeviceId() {
+      const hasCryptoUuid = typeof crypto !== "undefined" && crypto && typeof crypto.randomUUID === "function";
+      if (hasCryptoUuid) return crypto.randomUUID();
+      return `fallback-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    function getOrCreateDeviceId() {
+      const saved = localStorage.getItem("rabit_device_id");
+      if (saved) return saved;
+      const fresh = createDeviceId();
+      localStorage.setItem("rabit_device_id", fresh);
+      return fresh;
+    }
+
     const state = {
       token: localStorage.getItem("rabit_session_token") || "",
-      deviceId: localStorage.getItem("rabit_device_id") || crypto.randomUUID(),
+      deviceId: getOrCreateDeviceId(),
       tab: "photos",
       library: { photos: [], videos: [], files: [] },
       shared: []
@@ -392,8 +406,15 @@
 
     async function auth() {
       authError.style.display = "none";
-      const pin = pinInput.value.trim();
-      if (!pin) return;
+      const pin = pinInput.value.replace(/\D/g, "").trim();
+      if (pin.length !== 4) {
+        authError.textContent = "Enter the 4-digit PIN shown in Rabit.";
+        authError.style.color = "var(--danger)";
+        authError.style.display = "block";
+        return;
+      }
+      authBtn.disabled = true;
+      authBtn.textContent = "Connecting...";
       try {
         const res = await fetch("/auth", {
           method: "POST",
@@ -404,13 +425,24 @@
           body: JSON.stringify({ pin })
         });
         const data = await res.json();
-        if (!res.ok || !data.success) throw new Error("Auth failed");
+        if (!res.ok || !data.success) {
+          const reason = res.status === 401 ? "Wrong PIN. Please check and try again." : "Connection failed. Please retry.";
+          throw new Error(reason);
+        }
         state.token = data.message;
         localStorage.setItem("rabit_session_token", state.token);
+        authError.textContent = "PIN verified. Connecting...";
+        authError.style.color = "var(--ok)";
+        authError.style.display = "block";
         setAuthenticated(true);
         await refreshAll();
       } catch (e) {
+        authError.textContent = e?.message || "Invalid PIN or connection failed.";
+        authError.style.color = "var(--danger)";
         authError.style.display = "block";
+      } finally {
+        authBtn.disabled = false;
+        authBtn.textContent = "Connect";
       }
     }
 
@@ -503,6 +535,9 @@
     }
 
     authBtn.addEventListener("click", auth);
+    pinInput.addEventListener("input", () => {
+      pinInput.value = pinInput.value.replace(/\D/g, "").slice(0, 4);
+    });
     pinInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") auth();
     });

@@ -1,5 +1,6 @@
 package com.example.rabit.ui.settings
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,9 +13,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.fragment.app.FragmentActivity
+import com.example.rabit.data.bluetooth.HidDeviceManager
+import com.example.rabit.data.secure.BiometricAuthenticator
 import com.example.rabit.ui.MainViewModel
 import com.example.rabit.ui.theme.*
 import com.example.rabit.ui.components.*
@@ -31,7 +36,15 @@ fun CustomizationScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    val biometricAuthenticator = remember(activity) { activity?.let { BiometricAuthenticator(it) } }
+
     val biometricEnabled by viewModel.biometricLockEnabled.collectAsState()
+    val biometricMacAutofillEnabled by viewModel.biometricMacAutofillEnabled.collectAsState()
+    val macAutofillPreEnter by viewModel.macAutofillPreEnter.collectAsState()
+    val macAutofillPostEnter by viewModel.macAutofillPostEnter.collectAsState()
+    val connectionState by viewModel.connectionState.collectAsState()
     val shakeToDisconnect by viewModel.shakeToDisconnectEnabled.collectAsState()
     val stealthMode by viewModel.stealthModeEnabled.collectAsState()
     val dynamicTheme by viewModel.dynamicThemeEnabled.collectAsState()
@@ -86,6 +99,72 @@ fun CustomizationScreen(
                     iconColor = AccentGold,
                     onClick = { showPasswordDialog = true }
                 )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsToggleItem(
+                    title = "Biometric Password Autofill",
+                    subtitle = "Require fingerprint/face before typing Mac password",
+                    icon = Icons.Default.Password,
+                    iconColor = AccentTeal,
+                    checked = biometricMacAutofillEnabled,
+                    onCheckedChange = { viewModel.setBiometricMacAutofillEnabled(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsToggleItem(
+                    title = "Press Enter Before Typing",
+                    subtitle = "Wake login field before sending password",
+                    icon = Icons.Default.KeyboardReturn,
+                    iconColor = AccentBlue,
+                    checked = macAutofillPreEnter,
+                    onCheckedChange = { viewModel.setMacAutofillPreEnter(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                SettingsToggleItem(
+                    title = "Press Enter After Typing",
+                    subtitle = "Submit credentials after autofill",
+                    icon = Icons.Default.Login,
+                    iconColor = SuccessGreen,
+                    checked = macAutofillPostEnter,
+                    onCheckedChange = { viewModel.setMacAutofillPostEnter(it) }
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = if (connectionState is HidDeviceManager.ConnectionState.Connected) "Mac connection detected" else "Connect to Mac to use autofill",
+                        color = Silver,
+                        fontSize = 12.sp
+                    )
+                    Button(
+                        onClick = {
+                            val dispatchAutofill = {
+                                val error = viewModel.sendStoredMacPasswordToHost()
+                                val message = error ?: "Password sent securely via HID."
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            }
+
+                            if (biometricMacAutofillEnabled) {
+                                if (biometricAuthenticator?.isBiometricAvailable() == true) {
+                                    biometricAuthenticator.authenticate(
+                                        title = "Rabit Mac Autofill",
+                                        subtitle = "Authenticate to type your Mac password",
+                                        onSuccess = dispatchAutofill,
+                                        onError = { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() }
+                                    )
+                                } else {
+                                    Toast.makeText(context, "Biometric authentication is not available on this device.", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                dispatchAutofill()
+                            }
+                        },
+                        enabled = connectionState is HidDeviceManager.ConnectionState.Connected,
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentTeal),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Fingerprint, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Authenticate & Autofill Now", fontWeight = FontWeight.Bold)
+                    }
+                }
             }
 
             // ─── Interaction & Gestures ───

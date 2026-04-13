@@ -48,6 +48,25 @@ fun AutomationDashboardScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             item {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Graphite.copy(alpha = 0.45f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Info, contentDescription = null, tint = Silver)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("How to use Automation", color = Platinum, fontWeight = FontWeight.Bold)
+                        }
+                        Text("• Tap any macro to send keyboard shortcuts directly to your connected Mac.", color = Silver, fontSize = 12.sp)
+                        Text("• Requires an active Bluetooth HID connection.", color = Silver, fontSize = 12.sp)
+                        Text("• Add custom commands using keys like CMD, ALT, SHIFT.", color = Silver, fontSize = 12.sp)
+                    }
+                }
+            }
+
+            item {
                 QuickToolPanel(
                     onWakeOnLan = onNavigateToWakeOnLan,
                     onSshTerminal = onNavigateToSshTerminal
@@ -144,13 +163,56 @@ fun AutomationDashboardScreen(
     if (showAddDialog) {
         var name by remember { mutableStateOf("") }
         var command by remember { mutableStateOf("") }
+        val complexExample = remember {
+            """
+            KEY(CMD+SPACE)
+            WAIT(300)
+            TEXT(Terminal)
+            KEY(ENTER)
+            WAIT(700)
+            TEXT(whoami)
+            KEY(ENTER)
+            """.trimIndent()
+        }
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
             containerColor = Graphite,
             title = { Text("Define New Macro", color = Platinum) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Chain multiple commands using '&&'.", color = Silver, fontSize = 12.sp)
+                    Text("Write complex steps with one command per line or use '&&'.", color = Silver, fontSize = 12.sp)
+                    Surface(
+                        color = SoftGrey.copy(alpha = 0.18f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.3f))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Supported syntax", color = Platinum, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("KEY(CMD+SPACE)", color = Silver, fontSize = 11.sp)
+                            Text("TEXT(hello world)", color = Silver, fontSize = 11.sp)
+                            Text("WAIT(500)", color = Silver, fontSize = 11.sp)
+                            Text("MEDIA(MUTE)", color = Silver, fontSize = 11.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Example: Open Terminal and run whoami", color = Platinum, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                            Text("KEY(CMD+SPACE)", color = AccentGold, fontSize = 11.sp)
+                            Text("WAIT(300)", color = AccentGold, fontSize = 11.sp)
+                            Text("TEXT(Terminal)", color = AccentGold, fontSize = 11.sp)
+                            Text("KEY(ENTER)", color = AccentGold, fontSize = 11.sp)
+                            Text("WAIT(700)", color = AccentGold, fontSize = 11.sp)
+                            Text("TEXT(whoami)", color = AccentGold, fontSize = 11.sp)
+                            Text("KEY(ENTER)", color = AccentGold, fontSize = 11.sp)
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            if (name.isBlank()) name = "Open Terminal + whoami"
+                            command = complexExample
+                        }
+                    ) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = AccentGold)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Insert Example", color = AccentGold, fontWeight = FontWeight.Bold)
+                    }
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
@@ -166,7 +228,7 @@ fun AutomationDashboardScreen(
                         value = command,
                         onValueChange = { command = it },
                         label = { Text("Command Sequence / Text") },
-                        placeholder = { Text("e.g. brew update && brew upgrade") },
+                        placeholder = { Text("KEY(CMD+SPACE)\nWAIT(300)\nTEXT(Terminal)\nKEY(ENTER)") },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = AccentGold,
                             unfocusedBorderColor = BorderColor,

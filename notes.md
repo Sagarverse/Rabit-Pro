@@ -1,3 +1,22 @@
+Media Deck companion command:
+python3 desktop-helper/rabit_desktop_helper.py --host <PHONE_IP> --pin <PIN>
+
+NOW_PLAYING payload consumed by app:
+{
+	"type": "NOW_PLAYING",
+	"title": "Song Title",
+	"artist": "Artist",
+	"album": "Album",
+	"artworkBase64": "..."
+}
+
+AirPlay receiver status:
+- Service now advertises _raop._tcp and accepts RTSP requests.
+- UI status text reflects runtime stages (ready, client connected, RTSP method).
+- Full ALAC decode/output engine is still pending integration.
+
+Fallback Wi-Fi PCM stream (file-based):
+python3 desktop-helper/rabit_desktop_helper.py --host <PHONE_IP> --pin <PIN> --stream-file /path/to/media.mp3 --stream-only
 1. Ultra-Fast Universal Drag-and-Drop (File & Photo Sharing)
 What it is: Drag a file, video, or photo on your Mac over to the Rabit UI to instantly send it to your Android device, or securely browse your Android's file system from your Mac.
 How to make it work without fail: Instead of relying purely on your existing WebSockets (which limit file sizes and speed), we will incorporate WebRTC DataChannels or run a lightweight local HTTP Server (nanohttpd) on the Android device via a Background Service. This allows incredibly fast, direct peer-to-peer file transfers over Wi-Fi, completely bypassing the cloud.

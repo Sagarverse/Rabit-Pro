@@ -19,6 +19,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,7 +55,7 @@ fun RabitAppScaffold(
     val isMono = AppThemeMode.isMonochrome
 
     // Main routes accessible from drawer
-    val mainRoutes = listOf("main", "keyboard", "web_bridge", "assistant", "settings", "wake_on_lan", "ssh_terminal")
+    val mainRoutes = listOf("main", "keyboard", "web_bridge", "assistant", "settings", "wake_on_lan", "ssh_terminal", "media_deck", "airplay_receiver")
     val isSubPage = currentRoute !in mainRoutes
 
     val screenTitle = when(currentRoute) {
@@ -63,6 +69,8 @@ fun RabitAppScaffold(
         "shortcuts" -> "GUIDE"
         "wake_on_lan" -> "WAKE ON LAN"
         "ssh_terminal" -> "SSH TERMINAL"
+        "media_deck" -> "MEDIA DECK"
+        "airplay_receiver" -> "AIRPLAY RX"
         else -> "RABIT PRO"
     }
 
@@ -82,7 +90,7 @@ fun RabitAppScaffold(
                     label = "Control Hub",
                     subLabel = "Keyboard & Trackpad",
                     icon = Icons.AutoMirrored.Filled.Dvr,
-                    selected = currentRoute == "main" || currentRoute == "keyboard",
+                    isSelected = currentRoute == "main" || currentRoute == "keyboard",
                     onClick = { 
                         onNavigate("keyboard")
                         scope.launch { drawerState.close() }
@@ -94,7 +102,7 @@ fun RabitAppScaffold(
                         label = "Web Bridge Hub",
                         subLabel = "File Sharing & Sync",
                         icon = Icons.Default.CloudSync,
-                        selected = currentRoute == "web_bridge",
+                        isSelected = currentRoute == "web_bridge",
                         onClick = {
                             onNavigate("web_bridge")
                             scope.launch { drawerState.close() }
@@ -107,7 +115,7 @@ fun RabitAppScaffold(
                         label = "Automation Hub",
                         subLabel = "Macros & Quick Actions",
                         icon = Icons.Default.Bolt,
-                        selected = currentRoute == "automation",
+                        isSelected = currentRoute == "automation",
                         onClick = {
                             onNavigate("automation")
                             scope.launch { drawerState.close() }
@@ -115,12 +123,34 @@ fun RabitAppScaffold(
                     )
                 }
 
+                DrawerItem(
+                    label = "Media Control Deck",
+                    subLabel = "Now Playing & Transport",
+                    icon = Icons.Default.MusicNote,
+                    isSelected = currentRoute == "media_deck",
+                    onClick = {
+                        onNavigate("media_deck")
+                        scope.launch { drawerState.close() }
+                    }
+                )
+
+                DrawerItem(
+                    label = "AirPlay Receiver",
+                    subLabel = "Wi-Fi audio target (experimental)",
+                    icon = Icons.Default.Speaker,
+                    isSelected = currentRoute == "airplay_receiver",
+                    onClick = {
+                        onNavigate("airplay_receiver")
+                        scope.launch { drawerState.close() }
+                    }
+                )
+
                 if (featureWakeOnLanVisible) {
                     DrawerItem(
                         label = "Wake-on-LAN",
                         subLabel = "Boot Sleeping Mac/PC",
                         icon = Icons.Default.PowerSettingsNew,
-                        selected = currentRoute == "wake_on_lan",
+                        isSelected = currentRoute == "wake_on_lan",
                         onClick = {
                             onNavigate("wake_on_lan")
                             scope.launch { drawerState.close() }
@@ -133,7 +163,7 @@ fun RabitAppScaffold(
                         label = "SSH Terminal",
                         subLabel = "Native secure shell",
                         icon = Icons.Default.Terminal,
-                        selected = currentRoute == "ssh_terminal",
+                        isSelected = currentRoute == "ssh_terminal",
                         onClick = {
                             onNavigate("ssh_terminal")
                             scope.launch { drawerState.close() }
@@ -146,7 +176,7 @@ fun RabitAppScaffold(
                         label = "AI Assistant",
                         subLabel = "Smart Control & Logic",
                         icon = Icons.Default.AutoAwesome,
-                        selected = currentRoute == "assistant",
+                        isSelected = currentRoute == "assistant",
                         onClick = {
                             onNavigate("assistant")
                             scope.launch { drawerState.close() }
@@ -161,7 +191,7 @@ fun RabitAppScaffold(
                     label = "System Settings",
                     subLabel = "Configuration & Sensitivity",
                     icon = Icons.Default.Settings,
-                    selected = currentRoute == "settings",
+                    isSelected = currentRoute == "settings",
                     onClick = { 
                         onNavigate("settings")
                         scope.launch { drawerState.close() }
@@ -214,11 +244,11 @@ fun RabitAppScaffold(
                     navigationIcon = {
                         if (isSubPage && onBack != null) {
                             IconButton(onClick = onBack) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Platinum)
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Go back", tint = Platinum)
                             }
                         } else {
                             IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Platinum)
+                                Icon(Icons.Default.Menu, contentDescription = "Open navigation menu", tint = Platinum)
                             }
                         }
                     },
@@ -227,7 +257,7 @@ fun RabitAppScaffold(
                         IconButton(onClick = { AppThemeMode.isMonochrome = !AppThemeMode.isMonochrome }) {
                             Icon(
                                 if(isMono) Icons.Default.InvertColorsOff else Icons.Default.InvertColors,
-                                contentDescription = "Theme",
+                                contentDescription = if (isMono) "Disable monochrome theme" else "Enable monochrome theme",
                                 tint = Platinum.copy(alpha = 0.7f),
                                 modifier = Modifier.size(20.dp)
                             )
@@ -250,20 +280,28 @@ fun DrawerItem(
     label: String,
     subLabel: String,
     icon: ImageVector,
-    selected: Boolean,
+    isSelected: Boolean,
     onClick: () -> Unit
 ) {
     val isMono = AppThemeMode.isMonochrome
     // If mono is on, use Platinum for selection. Otherwise AccentBlue.
     // BUT if the system background ever leaks to white, we'd need dark. 
     // Since we force Obsidian, Platinum/AccentBlue is always safe on Obsidian.
-    val tint = if (selected) (if(isMono) Platinum else AccentBlue) else Silver.copy(alpha = 0.6f)
+    val tint = if (isSelected) (if(isMono) Platinum else AccentBlue) else Silver.copy(alpha = 0.6f)
     
     Surface(
         onClick = onClick,
-        color = if (selected) (if(isMono) Platinum.copy(alpha = 0.05f) else AccentBlue.copy(alpha = 0.05f)) else Color.Transparent,
+        color = if (isSelected) (if(isMono) Platinum.copy(alpha = 0.05f) else AccentBlue.copy(alpha = 0.05f)) else Color.Transparent,
         shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp).fillMaxWidth()
+        modifier = Modifier
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                contentDescription = "$label. $subLabel"
+                selected = isSelected
+                stateDescription = if (isSelected) "Selected" else "Not selected"
+            }
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -272,7 +310,7 @@ fun DrawerItem(
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
             Spacer(modifier = Modifier.width(20.dp))
             Column {
-                Text(label, color = if(selected) Platinum else Silver, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(label, color = if(isSelected) Platinum else Silver, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 Text(subLabel, color = Silver.copy(alpha = 0.5f), fontSize = 11.sp)
             }
         }

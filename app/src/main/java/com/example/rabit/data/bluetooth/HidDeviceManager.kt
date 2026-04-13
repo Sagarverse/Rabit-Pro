@@ -458,13 +458,23 @@ class HidDeviceManager private constructor(private val context: Context) {
         reportChannel.trySend(ReportRequest(4, report))
     }
 
-    fun unlockMac(password: String) {
+    fun unlockMac(
+        password: String,
+        pressEnterBefore: Boolean = true,
+        pressEnterAfter: Boolean = true,
+        preTypeDelayMs: Long = 1500L,
+        postTypeDelayMs: Long = 800L
+    ) {
         scope.launch {
-            sendKeyPress(0x28, useSticky = false) // Enter
-            delay(1500)
+            if (pressEnterBefore) {
+                sendKeyPress(0x28, useSticky = false) // Enter
+            }
+            delay(preTypeDelayMs.coerceIn(0L, 10_000L))
             sendText(password)
-            delay(800)
-            sendKeyPress(0x28, useSticky = false) // Enter
+            delay(postTypeDelayMs.coerceIn(0L, 10_000L))
+            if (pressEnterAfter) {
+                sendKeyPress(0x28, useSticky = false) // Enter
+            }
         }
     }
 
