@@ -4,10 +4,13 @@ import kotlinx.coroutines.launch
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.automirrored.filled.*
@@ -16,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
@@ -43,6 +47,8 @@ fun RabitAppScaffold(
     featureWebBridgeVisible: Boolean = true,
     featureAutomationVisible: Boolean = true,
     featureAssistantVisible: Boolean = true,
+    featureSnippetsVisible: Boolean = true,
+    featureShortcutsVisible: Boolean = true,
     featureWakeOnLanVisible: Boolean = true,
     featureSshTerminalVisible: Boolean = true,
     activeApp: String? = null,
@@ -52,10 +58,17 @@ fun RabitAppScaffold(
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val isMono = AppThemeMode.isMonochrome
+    val drawerScrollState = rememberScrollState()
+    var showDrawerScrollHint by remember { mutableStateOf(true) }
+
+    LaunchedEffect(drawerScrollState.value) {
+        if (drawerScrollState.value > 0) {
+            showDrawerScrollHint = false
+        }
+    }
 
     // Main routes accessible from drawer
-    val mainRoutes = listOf("main", "keyboard", "web_bridge", "assistant", "settings", "wake_on_lan", "ssh_terminal", "media_deck", "airplay_receiver")
+    val mainRoutes = listOf("main", "keyboard", "web_bridge", "assistant", "settings", "wake_on_lan", "ssh_terminal", "media_deck", "airplay_receiver", "global_search", "automation", "password_manager")
     val isSubPage = currentRoute !in mainRoutes
 
     val screenTitle = when(currentRoute) {
@@ -65,13 +78,15 @@ fun RabitAppScaffold(
         "settings" -> "SETTINGS"
         "profile" -> "PROFILE"
         "customization" -> "THEME"
+        "password_manager" -> "PASSWORD MANAGER"
         "snippets" -> "SNIPPETS"
-        "shortcuts" -> "GUIDE"
+        "shortcuts" -> "AUTOMATION"
         "wake_on_lan" -> "WAKE ON LAN"
         "ssh_terminal" -> "SSH TERMINAL"
         "media_deck" -> "MEDIA DECK"
         "airplay_receiver" -> "AIRPLAY RX"
-        else -> "RABIT PRO"
+        "global_search" -> "GLOBAL SEARCH"
+        else -> "HACKIE"
     }
 
     ModalNavigationDrawer(
@@ -81,21 +96,60 @@ fun RabitAppScaffold(
                 drawerContainerColor = Obsidian,
                 drawerContentColor = Platinum,
                 drawerShape = RoundedCornerShape(topEnd = 32.dp, bottomEnd = 32.dp),
-                modifier = Modifier.width(320.dp).fillMaxHeight().background(Obsidian)
+                modifier = Modifier
+                    .width(320.dp)
+                    .fillMaxHeight()
+                    .background(AppAtmosphereGradient)
             ) {
-                Spacer(modifier = Modifier.height(64.dp))
-                
-                // Navigation Items
-                DrawerItem(
-                    label = "Control Hub",
-                    subLabel = "Keyboard & Trackpad",
-                    icon = Icons.AutoMirrored.Filled.Dvr,
-                    isSelected = currentRoute == "main" || currentRoute == "keyboard",
-                    onClick = { 
-                        onNavigate("keyboard")
-                        scope.launch { drawerState.close() }
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Spacer(modifier = Modifier.height(28.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = AccentBlue.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(
+                                "HACKIE",
+                                color = AccentBlue,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            "Navigation",
+                            color = Silver,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
-                )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Box(modifier = Modifier.weight(1f)) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(drawerScrollState)
+                        ) {
+                            // Navigation Items
+                            DrawerItem(
+                                label = "Control Hub",
+                                subLabel = "Keyboard & Trackpad",
+                                icon = Icons.AutoMirrored.Filled.Dvr,
+                                isSelected = currentRoute == "main" || currentRoute == "keyboard",
+                                onClick = {
+                                    onNavigate("keyboard")
+                                    scope.launch { drawerState.close() }
+                                }
+                            )
 
                 if (featureWebBridgeVisible) {
                     DrawerItem(
@@ -118,6 +172,17 @@ fun RabitAppScaffold(
                         isSelected = currentRoute == "automation",
                         onClick = {
                             onNavigate("automation")
+                            scope.launch { drawerState.close() }
+                        }
+                    )
+
+                    DrawerItem(
+                        label = "Payload Injector",
+                        subLabel = "DuckyScript command injection",
+                        icon = Icons.Default.ElectricBolt,
+                        isSelected = currentRoute == "injector",
+                        onClick = {
+                            onNavigate("injector")
                             scope.launch { drawerState.close() }
                         }
                     )
@@ -184,62 +249,96 @@ fun RabitAppScaffold(
                     )
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
+                if (featureSnippetsVisible) {
+                    DrawerItem(
+                        label = "Snippets",
+                        subLabel = "Saved reusable text blocks",
+                        icon = Icons.Default.ContentPaste,
+                        isSelected = currentRoute == "snippets",
+                        onClick = {
+                            onNavigate("snippets")
+                            scope.launch { drawerState.close() }
+                        }
+                    )
+                }
 
-                // Bottom Footer Items
+                            Spacer(modifier = Modifier.height(12.dp))
+
                 DrawerItem(
-                    label = "System Settings",
-                    subLabel = "Configuration & Sensitivity",
-                    icon = Icons.Default.Settings,
-                    isSelected = currentRoute == "settings",
-                    onClick = { 
-                        onNavigate("settings")
+                    label = "Password Manager",
+                    subLabel = "Biometric + password push settings",
+                    icon = Icons.Default.Password,
+                    isSelected = currentRoute == "password_manager",
+                    onClick = {
+                        onNavigate("password_manager")
                         scope.launch { drawerState.close() }
                     }
                 )
-                
-                Spacer(modifier = Modifier.height(24.dp))
+
+                            DrawerItem(
+                                label = "System Settings",
+                                subLabel = "Configuration & Sensitivity",
+                                icon = Icons.Default.Settings,
+                                isSelected = currentRoute == "settings",
+                                onClick = {
+                                    onNavigate("settings")
+                                    scope.launch { drawerState.close() }
+                                }
+                            )
+
+                            Spacer(modifier = Modifier.height(24.dp))
+                        }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(14.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Obsidian.copy(alpha = 0.8f), Color.Transparent)
+                                )
+                            )
+                    )
+
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(14.dp)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, Obsidian.copy(alpha = 0.8f))
+                                    )
+                                )
+                        )
+
+                        if (showDrawerScrollHint && drawerScrollState.maxValue > 0) {
+                            Text(
+                                "Scroll for more",
+                                color = Silver.copy(alpha = 0.55f),
+                                fontSize = 10.sp,
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 8.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
     ) {
         Scaffold(
-            containerColor = Obsidian,
+            containerColor = Color.Transparent,
             topBar = {
                 CenterAlignedTopAppBar(
                     title = {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = screenTitle,
-                                color = Platinum,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 2.sp
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "PRO v2.5",
-                                    color = AccentBlue.copy(alpha = 0.6f),
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp
-                                )
-                                if (activeApp != null) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Surface(
-                                        color = Silver.copy(alpha = 0.1f),
-                                        shape = RoundedCornerShape(4.dp)
-                                    ) {
-                                        Text(
-                                            text = activeApp.uppercase(),
-                                            color = SuccessGreen,
-                                            fontSize = 7.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        Text(
+                            text = screenTitle,
+                            color = Platinum,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp
+                        )
                     },
                     navigationIcon = {
                         if (isSubPage && onBack != null) {
@@ -254,23 +353,21 @@ fun RabitAppScaffold(
                     },
                     actions = {
                         topBarActions()
-                        IconButton(onClick = { AppThemeMode.isMonochrome = !AppThemeMode.isMonochrome }) {
-                            Icon(
-                                if(isMono) Icons.Default.InvertColorsOff else Icons.Default.InvertColors,
-                                contentDescription = if (isMono) "Disable monochrome theme" else "Enable monochrome theme",
-                                tint = Platinum.copy(alpha = 0.7f),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
                     },
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Obsidian,
+                        containerColor = Graphite.copy(alpha = 0.95f),
                         titleContentColor = Platinum
                     )
                 )
             }
         ) { padding ->
-            content(padding)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(AppAtmosphereGradient)
+            ) {
+                content(padding)
+            }
         }
     }
 }
@@ -283,16 +380,12 @@ fun DrawerItem(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    val isMono = AppThemeMode.isMonochrome
-    // If mono is on, use Platinum for selection. Otherwise AccentBlue.
-    // BUT if the system background ever leaks to white, we'd need dark. 
-    // Since we force Obsidian, Platinum/AccentBlue is always safe on Obsidian.
-    val tint = if (isSelected) (if(isMono) Platinum else AccentBlue) else Silver.copy(alpha = 0.6f)
-    
+    val tint = if (isSelected) Platinum else Silver.copy(alpha = 0.6f)
+
     Surface(
         onClick = onClick,
-        color = if (isSelected) (if(isMono) Platinum.copy(alpha = 0.05f) else AccentBlue.copy(alpha = 0.05f)) else Color.Transparent,
-        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) AccentBlue.copy(alpha = 0.14f) else Color.Transparent,
+        shape = RoundedCornerShape(14.dp),
         modifier = Modifier
             .padding(horizontal = 12.dp, vertical = 4.dp)
             .fillMaxWidth()
@@ -302,16 +395,21 @@ fun DrawerItem(
                 selected = isSelected
                 stateDescription = if (isSelected) "Selected" else "Not selected"
             }
+            .border(
+                width = 0.8.dp,
+                color = if (isSelected) AccentBlue.copy(alpha = 0.45f) else Color.Transparent,
+                shape = RoundedCornerShape(14.dp)
+            )
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
-            Spacer(modifier = Modifier.width(20.dp))
+            Spacer(modifier = Modifier.width(14.dp))
             Column {
-                Text(label, color = if(isSelected) Platinum else Silver, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text(subLabel, color = Silver.copy(alpha = 0.5f), fontSize = 11.sp)
+                Text(label, color = if (isSelected) Platinum else Silver, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text(subLabel, color = Silver.copy(alpha = 0.58f), fontSize = 10.sp)
             }
         }
     }

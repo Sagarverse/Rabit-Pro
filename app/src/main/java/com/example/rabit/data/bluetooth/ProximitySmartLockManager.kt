@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONArray
+import kotlin.math.pow
 
 @SuppressLint("MissingPermission")
 class ProximitySmartLockManager(
@@ -30,6 +31,18 @@ class ProximitySmartLockManager(
     private val connectionState: StateFlow<HidDeviceManager.ConnectionState>,
     private val scope: CoroutineScope
 ) {
+    companion object {
+        private const val PREF_LIVE_RSSI = "proximity_live_rssi"
+        private const val PREF_LIVE_DISTANCE_M = "proximity_live_distance_m"
+        private const val PREF_LIVE_LAST_SEEN_MS = "proximity_live_last_seen_ms"
+        private const val PREF_UNLOCK_ARMED = "proximity_unlock_armed"
+        private const val PREF_MAC_LOCK_STATE_GUESS = "proximity_mac_lock_state_guess"
+
+        private const val LOCK_STATE_UNKNOWN = "UNKNOWN"
+        private const val LOCK_STATE_LIKELY_LOCKED = "LIKELY_LOCKED"
+        private const val LOCK_STATE_LIKELY_UNLOCKED = "LIKELY_UNLOCKED"
+    }
+
     private val bluetoothAdapter: BluetoothAdapter? = context.getSystemService(BluetoothManager::class.java)?.adapter
     private val secureStorage = SecureStorage(context)
 
@@ -53,6 +66,12 @@ class ProximitySmartLockManager(
                     lastSeenAddress = device.address
                     lastSeenRssi = rssi
                     emaRssi = if (emaRssi <= -110) rssi.toDouble() else (emaRssi * 0.7 + rssi * 0.3)
+                    val estimatedDistance = estimateDistanceMeters(emaRssi)
+                    prefs.edit()
+                        .putInt(PREF_LIVE_RSSI, emaRssi.toInt())
+                        .putFloat(PREF_LIVE_DISTANCE_M, estimatedDistance.toFloat())
+                        .putLong(PREF_LIVE_LAST_SEEN_MS, System.currentTimeMillis())
+                        .apply()
                     evaluateProximity(device)
                 }
                 BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
@@ -70,6 +89,7 @@ class ProximitySmartLockManager(
     fun start() {
         if (enabled) return
         enabled = true
+        prefs.edit().putString(PREF_MAC_LOCK_STATE_GUESS, LOCK_STATE_UNKNOWN).apply()
 
         try {
             val filter = IntentFilter().apply {
@@ -101,6 +121,7 @@ class ProximitySmartLockManager(
             if (bluetoothAdapter?.isDiscovering == true) bluetoothAdapter.cancelDiscovery()
         } catch (_: Exception) {
         }
+        prefs.edit().putString(PREF_MAC_LOCK_STATE_GUESS, LOCK_STATE_UNKNOWN).apply()
     }
 
     private fun safeStartDiscovery() {
@@ -123,8 +144,9 @@ class ProximitySmartLockManager(
         val farThreshold = prefs.getInt("proximity_far_rssi", -80)
         val triggerCooldownMs = prefs.getInt("proximity_cooldown_sec", 12).toLong() * 1000L
         val requirePhoneUnlock = prefs.getBoolean("proximity_require_phone_unlock", true)
+        val unlockArmed = prefs.getBoolean(PREF_UNLOCK_ARMED, true)
 
-        if (emaRssi >= nearThreshold && now - lastNearUnlockMs > triggerCooldownMs) {
+        if (emaRssi >= nearThreshold && unlockArmed && now - lastNearUnlockMs > triggerCooldownMs) {
             lastNearUnlockMs = now
             scope.launch(Dispatchers.IO) {
                 if (!connected) {
@@ -141,6 +163,10 @@ class ProximitySmartLockManager(
                     val macPassword = secureStorage.getMacPassword().orEmpty()
                     if (macPassword.isNotBlank()) {
                         hidDeviceManager.unlockMac(macPassword)
+                        prefs.edit()
+                            .putBoolean(PREF_UNLOCK_ARMED, false)
+                            .putString(PREF_MAC_LOCK_STATE_GUESS, LOCK_STATE_LIKELY_UNLOCKED)
+                            .apply()
                     }
                 }
             }
@@ -153,8 +179,19 @@ class ProximitySmartLockManager(
                 val modifier = (HidKeyCodes.MODIFIER_LEFT_CTRL.toInt() or HidKeyCodes.MODIFIER_LEFT_GUI.toInt()).toByte()
                 hidDeviceManager.sendKeyPress(HidKeyCodes.KEY_Q, modifier = modifier, useSticky = false)
                 delay(400)
+                prefs.edit()
+                    .putBoolean(PREF_UNLOCK_ARMED, true)
+                    .putString(PREF_MAC_LOCK_STATE_GUESS, LOCK_STATE_LIKELY_LOCKED)
+                    .apply()
             }
         }
+    }
+
+    private fun estimateDistanceMeters(rssi: Double): Double {
+        // Approximate estimate; BLE distance depends on walls/interference.
+        val txPowerAt1m = -59.0
+        val pathLossExponent = 2.0
+        return 10.0.pow((txPowerAt1m - rssi) / (10.0 * pathLossExponent)).coerceIn(0.1, 20.0)
     }
 
     private fun isTrackedHost(device: BluetoothDevice): Boolean {

@@ -338,9 +338,11 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun loadChatSession(sessionId: String) {
-        // Save current session first
-        saveCurrentSession()
+    fun loadChatSession(sessionId: String, saveCurrent: Boolean = true) {
+        // Save current session first when switching sessions explicitly.
+        if (saveCurrent) {
+            saveCurrentSession()
+        }
         
         _currentSessionId.value = sessionId
         viewModelScope.launch {
@@ -358,7 +360,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             // If we deleted the current session, or if NO sessions remain, reset state
             if (_currentSessionId.value == sessionId || updatedSessions.isEmpty()) {
                 if (updatedSessions.isNotEmpty()) {
-                    loadChatSession(updatedSessions.first().id)
+                    loadChatSession(updatedSessions.first().id, saveCurrent = false)
                 } else {
                     // Total reset
                     _currentSessionId.value = null
@@ -519,7 +521,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         if (messages.isEmpty()) return
         
         val exportText = StringBuilder().apply {
-            append("--- Rabit Pro AI Chat Export ---\n")
+            append("--- Hackie AI Chat Export ---\n")
             append("Date: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date())}\n\n")
             messages.forEach { msg ->
                 val role = if (msg.isUser) "USER" else "AI"
@@ -530,7 +532,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "Rabit Pro Chat History")
+            putExtra(Intent.EXTRA_SUBJECT, "Hackie Chat History")
             putExtra(Intent.EXTRA_TEXT, exportText)
         }
         val chooser = Intent.createChooser(intent, "Export History")

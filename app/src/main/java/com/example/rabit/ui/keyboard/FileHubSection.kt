@@ -31,7 +31,7 @@ import com.example.rabit.ui.theme.*
 fun FileHubSection(
     viewModel: MainViewModel,
     onNavigateToSnippets: () -> Unit,
-    onNavigateToShortcuts: () -> Unit,
+    onNavigateToAutomation: () -> Unit,
     onNavigateToWebBridge: () -> Unit
 ) {
     val context = LocalContext.current
@@ -47,6 +47,31 @@ fun FileHubSection(
         border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.3f))
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Graphite.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(14.dp),
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.35f))
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                    Text("How to connect Hub", color = Platinum, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("1. Open Web Bridge and enable P2P.", color = Silver, fontSize = 11.sp)
+                    Text("2. Connect your computer to the bridge page and authenticate.", color = Silver, fontSize = 11.sp)
+                    Text("3. Come back here and tap refresh to browse files.", color = Silver, fontSize = 11.sp)
+                    if (!p2pStatus.contains("Connected")) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(onClick = onNavigateToWebBridge) {
+                            Icon(Icons.Default.CloudSync, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Open Web Bridge Setup", color = AccentBlue)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             // Header & Breadcrumbs
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -123,7 +148,7 @@ fun FileHubSection(
             // Quick Links Row (Relocated for better accessibility)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SmallActionCard(modifier = Modifier.weight(1f), title = "SNIPPETS", icon = Icons.AutoMirrored.Filled.TextSnippet, accent = AccentGold) { onNavigateToSnippets() }
-                SmallActionCard(modifier = Modifier.weight(1f), title = "SHORTCUTS", icon = Icons.Default.Keyboard, accent = AccentPurple) { onNavigateToShortcuts() }
+                SmallActionCard(modifier = Modifier.weight(1f), title = "AUTOMATION", icon = Icons.Default.Bolt, accent = AccentPurple) { onNavigateToAutomation() }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

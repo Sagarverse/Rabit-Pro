@@ -247,7 +247,7 @@ class HidService : Service() {
             val manager = getSystemService(NotificationManager::class.java)
             
             val serviceChannel = NotificationChannel(
-                channelId, "Rabit Background Service", NotificationManager.IMPORTANCE_LOW
+                channelId, "Hackie Background Service", NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Keeps Bluetooth connection active while app is in use."
             }
@@ -279,7 +279,7 @@ class HidService : Service() {
         val stopPending = PendingIntent.getService(this, 12, stopIntent, PendingIntent.FLAG_IMMUTABLE)
 
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Rabit: $title")
+            .setContentTitle("Hackie: $title")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
             .setContentIntent(pendingIntent)

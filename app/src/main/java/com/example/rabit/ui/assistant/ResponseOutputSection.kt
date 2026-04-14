@@ -53,7 +53,7 @@ fun ResponseOutputSection(uiState: AssistantUiState, viewModel: AssistantViewMod
                         Icon(
                             Icons.Default.AutoAwesome,
                             contentDescription = null,
-                            tint = AccentGold.copy(alpha = 0.3f),
+                            tint = AccentBlue.copy(alpha = 0.3f),
                             modifier = Modifier.size(40.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
@@ -75,7 +75,7 @@ fun ResponseOutputSection(uiState: AssistantUiState, viewModel: AssistantViewMod
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
-                            color = AccentGold,
+                            color = AccentBlue,
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(12.dp))
@@ -89,17 +89,17 @@ fun ResponseOutputSection(uiState: AssistantUiState, viewModel: AssistantViewMod
             is AssistantUiState.Error -> {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    color = ErrorRed.copy(alpha = 0.1f),
+                    color = AccentBlue.copy(alpha = 0.1f),
                     shape = RoundedCornerShape(16.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, ErrorRed.copy(alpha = 0.3f))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AccentBlue.copy(alpha = 0.3f))
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Error, contentDescription = null, tint = ErrorRed, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Error, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text(state.message, color = ErrorRed, fontSize = 14.sp)
+                        Text(state.message, color = AccentBlue, fontSize = 14.sp)
                     }
                 }
             }
@@ -130,9 +130,9 @@ fun GeminiResponseBox(response: GeminiResponse, viewModel: AssistantViewModel) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Response header
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("GEMINI", color = AccentGold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Text("GEMINI", color = AccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -243,7 +243,7 @@ fun GeminiResponseBox(response: GeminiResponse, viewModel: AssistantViewModel) {
                             onCheckedChange = { viewModel.setAutoPushEnabled(it) },
                             modifier = Modifier.scale(0.65f),
                             colors = SwitchDefaults.colors(
-                                checkedTrackColor = SuccessGreen,
+                                checkedTrackColor = AccentBlue,
                                 checkedThumbColor = androidx.compose.ui.graphics.Color.White,
                                 uncheckedThumbColor = androidx.compose.ui.graphics.Color.White,
                                 uncheckedTrackColor = SoftGrey

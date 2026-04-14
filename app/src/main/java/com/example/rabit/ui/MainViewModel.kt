@@ -3,12 +3,15 @@ package com.example.rabit.ui
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Application
-import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -16,59 +19,66 @@ import android.os.Environment
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.provider.MediaStore
+import android.util.Base64
+import android.util.Log
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.rabit.data.repository.KeyboardRepositoryImpl
-import com.example.rabit.domain.repository.KeyboardRepository
+import com.example.rabit.data.airplay.AirPlayStateBus
+import com.example.rabit.data.airplay.AlacFrameDecoder
 import com.example.rabit.data.bluetooth.HidDeviceManager
 import com.example.rabit.data.bluetooth.HidService
-import com.example.rabit.data.sensors.GyroscopeAirMouse
+import com.example.rabit.data.gemini.LocalLlmManager
 import com.example.rabit.data.network.RabitNetworkServer
 import com.example.rabit.data.network.WebRtcManager
-import com.example.rabit.data.gemini.LocalLlmManager
-import com.example.rabit.data.airplay.AirPlayStateBus
+import com.example.rabit.data.repository.KeyboardRepositoryImpl
+import com.example.rabit.data.secure.SecureStorage
+import com.example.rabit.data.sensors.GyroscopeAirMouse
 import com.example.rabit.data.sensors.SpatialPointerManager
 import com.example.rabit.data.voice.VoiceAssistantManager
 import com.example.rabit.data.voice.VoiceState
-import com.example.rabit.data.secure.SecureStorage
-import android.bluetooth.BluetoothManager
-import android.util.Base64
 import com.example.rabit.domain.model.HidKeyCodes
-import com.example.rabit.domain.model.Workstation
 import com.example.rabit.domain.model.RemoteFile
-import kotlinx.coroutines.delay
+import com.example.rabit.domain.model.Workstation
+import com.example.rabit.domain.repository.KeyboardRepository
+import com.jcraft.jsch.ChannelExec
+import com.jcraft.jsch.ChannelShell
+import com.jcraft.jsch.JSch
+import com.jcraft.jsch.Session
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStreamWriter
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
-import com.jcraft.jsch.ChannelShell
-import com.jcraft.jsch.ChannelExec
-import com.jcraft.jsch.JSch
-import com.jcraft.jsch.Session
-import java.io.OutputStreamWriter
-import java.io.ByteArrayOutputStream
-import java.net.DatagramPacket
-import java.net.DatagramSocket
-import java.net.InetAddress
 import java.util.Properties
 import java.util.UUID
 import kotlin.experimental.or
 import kotlin.math.abs
+import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.math.sign
-import androidx.core.content.ContextCompat
-import android.provider.MediaStore
-import java.io.File
-import java.io.FileOutputStream
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: KeyboardRepository = KeyboardRepositoryImpl(application)
@@ -97,6 +107,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val hasUnlockPassword = _hasUnlockPassword.asStateFlow()
     private val _macPassword = MutableStateFlow(secureStorage.getMacPassword() ?: "")
     val macPassword = _macPassword.asStateFlow()
+    private val _passwordVaultEntries = MutableStateFlow(loadPasswordVaultEntries())
+    val passwordVaultEntries = _passwordVaultEntries.asStateFlow()
 
     private val _autoReconnectEnabled = MutableStateFlow(prefs.getBoolean("auto_reconnect_enabled", true))
     val autoReconnectEnabled = _autoReconnectEnabled.asStateFlow()
@@ -113,6 +125,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val proximityRequirePhoneUnlock = _proximityRequirePhoneUnlock.asStateFlow()
     private val _proximityTargetAddress = MutableStateFlow(prefs.getString("proximity_target_address", "") ?: "")
     val proximityTargetAddress = _proximityTargetAddress.asStateFlow()
+    private val _proximityLiveRssi = MutableStateFlow(prefs.getInt("proximity_live_rssi", -120))
+    val proximityLiveRssi = _proximityLiveRssi.asStateFlow()
+    private val _proximityLiveDistanceMeters = MutableStateFlow(prefs.getFloat("proximity_live_distance_m", -1f))
+    val proximityLiveDistanceMeters = _proximityLiveDistanceMeters.asStateFlow()
+    private val _proximityLiveLastSeenMs = MutableStateFlow(prefs.getLong("proximity_live_last_seen_ms", 0L))
+    val proximityLiveLastSeenMs = _proximityLiveLastSeenMs.asStateFlow()
+    private val _proximityUnlockArmed = MutableStateFlow(prefs.getBoolean("proximity_unlock_armed", true))
+    val proximityUnlockArmed = _proximityUnlockArmed.asStateFlow()
+    private val _proximityMacLockStateGuess = MutableStateFlow(prefs.getString("proximity_mac_lock_state_guess", "UNKNOWN") ?: "UNKNOWN")
+    val proximityMacLockStateGuess = _proximityMacLockStateGuess.asStateFlow()
 
     private val _typingSpeed = MutableStateFlow(prefs.getString("typing_speed", "Normal") ?: "Normal")
     val typingSpeed = _typingSpeed.asStateFlow()
@@ -162,6 +184,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val airPlayReceiverEnabled = _airPlayReceiverEnabled.asStateFlow()
     private val _airPlayStatus = MutableStateFlow("Idle")
     val airPlayStatus = _airPlayStatus.asStateFlow()
+    private val _airPlayStatusLog = MutableStateFlow<List<String>>(listOf("Idle"))
+    val airPlayStatusLog = _airPlayStatusLog.asStateFlow()
+    private val _airPlayNativeReadiness = MutableStateFlow("LOW")
+    val airPlayNativeReadiness = _airPlayNativeReadiness.asStateFlow()
+    private val _airPlayAutoRecoveryEnabled = MutableStateFlow(prefs.getBoolean("airplay_auto_recovery_enabled", true))
+    val airPlayAutoRecoveryEnabled = _airPlayAutoRecoveryEnabled.asStateFlow()
+    private val _airPlayAutoFallbackEnabled = MutableStateFlow(prefs.getBoolean("airplay_auto_fallback_enabled", true))
+    val airPlayAutoFallbackEnabled = _airPlayAutoFallbackEnabled.asStateFlow()
+    private val _airPlayHandshakeStage = MutableStateFlow("IDLE")
+    val airPlayHandshakeStage = _airPlayHandshakeStage.asStateFlow()
+    private val _airPlayLastRtspMethod = MutableStateFlow("-")
+    val airPlayLastRtspMethod = _airPlayLastRtspMethod.asStateFlow()
+    private val _airPlayServerPorts = MutableStateFlow("a=- c=- t=-")
+    val airPlayServerPorts = _airPlayServerPorts.asStateFlow()
+    private val _airPlayClientPorts = MutableStateFlow("a=- c=- t=-")
+    val airPlayClientPorts = _airPlayClientPorts.asStateFlow()
+    private val _airPlayPacketStats = MutableStateFlow("delivered=0 reorder=0 drop=0")
+    val airPlayPacketStats = _airPlayPacketStats.asStateFlow()
+    private val _airPlayAlacCapability = MutableStateFlow("UNKNOWN")
+    val airPlayAlacCapability = _airPlayAlacCapability.asStateFlow()
+    private var airPlayRecoveryInProgress = false
+    private var lastAirPlayRecoveryAtMs = 0L
+    private var airPlayFallbackInProgress = false
+    private var lastAirPlayFallbackAtMs = 0L
     private val _wifiAudioStatus = MutableStateFlow("Idle")
     val wifiAudioStatus = _wifiAudioStatus.asStateFlow()
     private val _wifiAudioStreamActive = MutableStateFlow(false)
@@ -172,6 +218,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _webBridgePin = MutableStateFlow(RabitNetworkServer.currentPin)
     val webBridgePin: StateFlow<String> = _webBridgePin.asStateFlow()
+    private val _webBridgeSelfTestStatus = MutableStateFlow("Not tested")
+    val webBridgeSelfTestStatus: StateFlow<String> = _webBridgeSelfTestStatus.asStateFlow()
+    private val _webBridgeSelfTestInProgress = MutableStateFlow(false)
+    val webBridgeSelfTestInProgress: StateFlow<Boolean> = _webBridgeSelfTestInProgress.asStateFlow()
 
     // Vibration toggle & Presets
     private val _vibrationEnabled = MutableStateFlow(prefs.getBoolean("vibration_enabled", true))
@@ -237,6 +287,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isMouseJigglerEnabled = MutableStateFlow(prefs.getBoolean("mouse_jiggler_enabled", false))
     val isMouseJigglerEnabled = _isMouseJigglerEnabled.asStateFlow()
     private var mouseJigglerJob: Job? = null
+    private var proximityTelemetryJob: Job? = null
 
     fun setMouseJigglerEnabled(enabled: Boolean) {
         _isMouseJigglerEnabled.value = enabled
@@ -255,7 +306,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         try {
                             repository.sendMouseMove(if (right) 1f else -1f, 0f)
                             right = !right
-                        } catch (e: Exception) {}
+                        } catch (e: Exception) {
+                            Log.w("MainViewModel", "Mouse jiggler send failed", e)
+                        }
                         delay(30_000)
                     }
                 }
@@ -324,9 +377,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _stealthModeEnabled = MutableStateFlow(prefs.getBoolean("stealth_mode_enabled", false))
     val stealthModeEnabled = _stealthModeEnabled.asStateFlow()
 
-    private val _dynamicThemeEnabled = MutableStateFlow(prefs.getBoolean("dynamic_theme_enabled", true))
-    val dynamicThemeEnabled = _dynamicThemeEnabled.asStateFlow()
-
     private val _activeApp = MutableStateFlow<String?>(null)
     val activeApp = _activeApp.asStateFlow()
 
@@ -374,7 +424,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (_shakeToDisconnectEnabled.value) {
                 when (connectionState.value) {
                     is HidDeviceManager.ConnectionState.Connected -> repository.disconnect()
-                    is HidDeviceManager.ConnectionState.Disconnected -> reconnectLastSavedDevice()
+                    is HidDeviceManager.ConnectionState.Disconnected -> {
+                        if (_autoReconnectEnabled.value) reconnectLastSavedDevice()
+                    }
                     else -> Unit
                 }
             }
@@ -402,7 +454,150 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             AirPlayStateBus.status.collect { status ->
                 _airPlayStatus.value = status
+                val ts = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(System.currentTimeMillis())
+                _airPlayStatusLog.value = (listOf("[$ts] $status") + _airPlayStatusLog.value).distinct().take(24)
+                parseAirPlayDiagnostics(status)
+                _airPlayHandshakeStage.value = mapAirPlayStage(status)
+
+                maybeAutoRecoverAirPlay(status)
+                maybeAutoEnableAirPlayFallback(status)
+
+                _airPlayNativeReadiness.value = when {
+                    status.contains("ALAC decode active", ignoreCase = true) -> "MEDIUM"
+                    status.contains("Unsupported RAOP transport", ignoreCase = true) -> "LOW"
+                    status.contains("Unsupported RAOP codec", ignoreCase = true) -> "LOW"
+                    status.contains("AirPlay fallback required", ignoreCase = true) -> "LOW"
+                    status.contains("Auto fallback:", ignoreCase = true) -> "LOW-MEDIUM"
+                    status.contains("Compatibility mode: RAOP-only", ignoreCase = true) -> "LOW-MEDIUM"
+                    status.contains("ALAC stream detected", ignoreCase = true) -> "LOW"
+                    status.contains("RTP stream stalled", ignoreCase = true) -> "LOW-MEDIUM"
+                    status.contains("Waiting for RTP packets", ignoreCase = true) -> "LOW-MEDIUM"
+                    status.contains("RTP packets delivered", ignoreCase = true) -> "MEDIUM"
+                    status.contains("RAOP RECORD started", ignoreCase = true) -> "MEDIUM"
+                    status.contains("RAOP SETUP", ignoreCase = true) -> "LOW-MEDIUM"
+                    status.contains("RAOP ANNOUNCE", ignoreCase = true) -> "LOW-MEDIUM"
+                    status.contains("AirPlay ready on port", ignoreCase = true) -> "LOW"
+                    status.contains("Idle", ignoreCase = true) -> "LOW"
+                    else -> _airPlayNativeReadiness.value
+                }
             }
+        }
+
+        refreshAirPlayDecoderCapability()
+    }
+
+    fun refreshAirPlayDecoderCapability() {
+        _airPlayAlacCapability.value = AlacFrameDecoder.capabilityLabel()
+    }
+
+    private fun maybeAutoRecoverAirPlay(status: String) {
+        if (!_airPlayAutoRecoveryEnabled.value) return
+        if (!_airPlayReceiverEnabled.value) return
+        if (!status.contains("stalled", ignoreCase = true)) return
+        if (airPlayRecoveryInProgress) return
+
+        val now = System.currentTimeMillis()
+        if (now - lastAirPlayRecoveryAtMs < 15_000) return
+
+        airPlayRecoveryInProgress = true
+        lastAirPlayRecoveryAtMs = now
+        viewModelScope.launch {
+            val ts = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(System.currentTimeMillis())
+            _airPlayStatusLog.value = (listOf("[$ts] Auto-recovery: restarting receiver") + _airPlayStatusLog.value).take(24)
+            stopAirPlayReceiver()
+            delay(900)
+            startAirPlayReceiver()
+            delay(1200)
+            airPlayRecoveryInProgress = false
+        }
+    }
+
+    private fun maybeAutoEnableAirPlayFallback(status: String) {
+        if (!_airPlayAutoFallbackEnabled.value) return
+        if (status.contains("ALAC decode active", ignoreCase = true)) return
+        val hasNativeAlacDecoder = _airPlayAlacCapability.value.startsWith("AVAILABLE")
+        val needsFallback =
+            status.contains("Unsupported RAOP codec", ignoreCase = true) ||
+                status.contains("AirPlay fallback required", ignoreCase = true) ||
+                status.contains("ALAC decode unavailable", ignoreCase = true) ||
+                (status.contains("ALAC stream detected", ignoreCase = true) && !hasNativeAlacDecoder)
+        if (!needsFallback) return
+        if (airPlayFallbackInProgress) return
+        if (_webBridgeRunning.value) return
+
+        val now = System.currentTimeMillis()
+        if (now - lastAirPlayFallbackAtMs < 20_000) return
+
+        airPlayFallbackInProgress = true
+        lastAirPlayFallbackAtMs = now
+        viewModelScope.launch {
+            val ts = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(System.currentTimeMillis())
+            _airPlayStatusLog.value = (
+                listOf("[$ts] Auto fallback: starting Web Bridge for phone speaker playback") +
+                    _airPlayStatusLog.value
+                ).take(24)
+            startWebBridge()
+            delay(900)
+            _webBridgeRunning.value = RabitNetworkServer.isRunning
+            val doneTs = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(System.currentTimeMillis())
+            _airPlayStatusLog.value = (
+                listOf("[$doneTs] Auto fallback: Web Bridge ${if (_webBridgeRunning.value) "running" else "failed to start"}") +
+                    _airPlayStatusLog.value
+                ).take(24)
+            airPlayFallbackInProgress = false
+        }
+    }
+
+    fun setAirPlayAutoRecoveryEnabled(enabled: Boolean) {
+        _airPlayAutoRecoveryEnabled.value = enabled
+        prefs.edit().putBoolean("airplay_auto_recovery_enabled", enabled).apply()
+    }
+
+    fun setAirPlayAutoFallbackEnabled(enabled: Boolean) {
+        _airPlayAutoFallbackEnabled.value = enabled
+        prefs.edit().putBoolean("airplay_auto_fallback_enabled", enabled).apply()
+    }
+
+    private fun mapAirPlayStage(status: String): String {
+        return when {
+            status.contains("Unsupported RAOP transport", ignoreCase = true) -> "FAILED"
+            status.contains("Unsupported RAOP codec", ignoreCase = true) -> "FAILED"
+            status.contains("AirPlay fallback required", ignoreCase = true) -> "FAILED"
+            status.contains("AirPlay start failed", ignoreCase = true) -> "FAILED"
+            status.contains("Idle", ignoreCase = true) -> "IDLE"
+            status.contains("RTP stream stalled", ignoreCase = true) -> "STALLED"
+            status.contains("RTP packets delivered", ignoreCase = true) -> "STREAMING"
+            status.contains("Waiting for RTP packets", ignoreCase = true) -> "WAITING_RTP"
+            status.contains("RAOP RECORD started", ignoreCase = true) -> "RECORDING"
+            status.contains("RAOP SETUP", ignoreCase = true) -> "SETUP"
+            status.contains("RAOP ANNOUNCE", ignoreCase = true) -> "ANNOUNCED"
+            status.contains("Client connected", ignoreCase = true) -> "CONNECTED"
+            status.contains("RAOP advertised", ignoreCase = true) ||
+                status.contains("AirPlay service advertised", ignoreCase = true) ||
+                status.contains("AirPlay ready on port", ignoreCase = true) -> "ADVERTISED"
+            else -> _airPlayHandshakeStage.value
+        }
+    }
+
+    private fun parseAirPlayDiagnostics(status: String) {
+        Regex("RTSP\\s+([A-Z_]+)\\s+from", RegexOption.IGNORE_CASE).find(status)?.let { match ->
+            _airPlayLastRtspMethod.value = match.groupValues[1].uppercase(Locale.getDefault())
+        }
+
+        Regex("RAOP UDP ready a=(\\d+) c=(\\d+) t=(\\d+)", RegexOption.IGNORE_CASE).find(status)?.let { match ->
+            _airPlayServerPorts.value = "a=${match.groupValues[1]} c=${match.groupValues[2]} t=${match.groupValues[3]}"
+        }
+
+        Regex("RAOP client ports a=(-?\\d+) c=(-?\\d+) t=(-?\\d+)", RegexOption.IGNORE_CASE).find(status)?.let { match ->
+            _airPlayClientPorts.value = "a=${match.groupValues[1]} c=${match.groupValues[2]} t=${match.groupValues[3]}"
+        }
+
+        Regex("RTP packets delivered=(\\d+) reorder=(\\d+) drop=(\\d+)", RegexOption.IGNORE_CASE).find(status)?.let { match ->
+            _airPlayPacketStats.value = "delivered=${match.groupValues[1]} reorder=${match.groupValues[2]} drop=${match.groupValues[3]}"
+        }
+
+        if (status.contains("RAOP FLUSH", ignoreCase = true) || status.contains("Idle", ignoreCase = true)) {
+            _airPlayPacketStats.value = "delivered=0 reorder=0 drop=0"
         }
     }
 
@@ -449,13 +644,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setStealthModeEnabled(enabled: Boolean) {
         _stealthModeEnabled.value = enabled
         prefs.edit().putBoolean("stealth_mode_enabled", enabled).apply()
-    }
-
-    fun setDynamicThemeEnabled(enabled: Boolean) {
-        _dynamicThemeEnabled.value = enabled
-        prefs.edit().putBoolean("dynamic_theme_enabled", enabled).apply()
-        // Update global theme state if necessary
-        com.example.rabit.ui.theme.AppThemeMode.isMonochrome = !enabled
     }
 
     fun addSharedFile(uri: android.net.Uri) {
@@ -509,7 +697,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val sshPassword = _sshPassword.asStateFlow()
     private val _sshConnected = MutableStateFlow(false)
     val sshConnected = _sshConnected.asStateFlow()
-    private val _sshTerminalLines = MutableStateFlow<List<String>>(listOf("Rabit SSH terminal ready."))
+    private val _sshTerminalLines = MutableStateFlow<List<String>>(listOf("Hackie SSH terminal ready."))
     val sshTerminalLines = _sshTerminalLines.asStateFlow()
     private val _sshStatus = MutableStateFlow("Disconnected")
     val sshStatus = _sshStatus.asStateFlow()
@@ -558,6 +746,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun sendWakeOnLan() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                _wolStatus.value = "Sending magic packet..."
                 val mac = parseMacAddress(_wolMacAddress.value)
                 val packetBytes = ByteArray(6 + 16 * mac.size)
                 for (i in 0 until 6) packetBytes[i] = 0xFF.toByte()
@@ -565,14 +754,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     mac.copyInto(packetBytes, i)
                 }
 
-                DatagramSocket().use { socket ->
-                    socket.broadcast = true
-                    val address = InetAddress.getByName(_wolBroadcastIp.value.ifBlank { "255.255.255.255" })
-                    val packet = DatagramPacket(packetBytes, packetBytes.size, address, _wolPort.value)
-                    socket.send(packet)
+                val targets = linkedSetOf<InetAddress>()
+                val preferredBroadcast = _wolBroadcastIp.value.ifBlank { "255.255.255.255" }
+                runCatching { InetAddress.getByName(preferredBroadcast) }
+                    .onSuccess { targets.add(it) }
+
+                val interfaces = runCatching { java.net.NetworkInterface.getNetworkInterfaces() }.getOrNull()
+                if (interfaces != null) {
+                    while (interfaces.hasMoreElements()) {
+                        val iface = interfaces.nextElement() ?: continue
+                        if (!iface.isUp || iface.isLoopback) continue
+                        iface.interfaceAddresses
+                            .mapNotNull { it.broadcast }
+                            .forEach { targets.add(it) }
+                    }
                 }
 
-                _wolStatus.value = "Magic packet sent to ${_wolBroadcastIp.value}:${_wolPort.value}"
+                if (targets.isEmpty()) {
+                    targets.add(InetAddress.getByName("255.255.255.255"))
+                }
+
+                val failures = mutableListOf<String>()
+                var successCount = 0
+                DatagramSocket().use { socket ->
+                    socket.broadcast = true
+                    socket.reuseAddress = true
+                    targets.forEach { address ->
+                        try {
+                            socket.send(DatagramPacket(packetBytes, packetBytes.size, address, _wolPort.value))
+                            successCount += 1
+                        } catch (sendError: Exception) {
+                            failures += "${address.hostAddress}: ${sendError.message ?: "send failed"}"
+                        }
+                    }
+                }
+
+                if (successCount > 0) {
+                    val sentAt = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(System.currentTimeMillis())
+                    _wolStatus.value = "Success: Sent $successCount packet route(s) at $sentAt on port ${_wolPort.value}."
+                } else {
+                    val details = failures.take(2).joinToString(" | ").ifBlank { "No reachable broadcast route" }
+                    _wolStatus.value = "Failed: $details"
+                }
             } catch (e: Exception) {
                 _wolStatus.value = "Failed: ${e.message ?: "invalid MAC or network"}"
             }
@@ -710,7 +933,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearSshTerminal() {
-        _sshTerminalLines.value = listOf("Rabit SSH terminal cleared.")
+        _sshTerminalLines.value = listOf("Hackie SSH terminal cleared.")
     }
 
     private fun appendTerminalLine(line: String) {
@@ -764,6 +987,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         updateRepositorySpeed(_typingSpeed.value)
         setupNetworkListeners()
         refreshLocalIp()
+        startProximityTelemetryRefresh()
         _customMacros.value = loadCustomMacros()
         macrosCache = _customMacros.value
         _savedDevices.value = loadSavedDevices()
@@ -817,6 +1041,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // RabitNetworkServer now purely manages bidirectional file sharing
     }
 
+    private fun startProximityTelemetryRefresh() {
+        proximityTelemetryJob?.cancel()
+        proximityTelemetryJob = viewModelScope.launch {
+            while (isActive) {
+                _proximityLiveRssi.value = prefs.getInt("proximity_live_rssi", -120)
+                _proximityLiveDistanceMeters.value = prefs.getFloat("proximity_live_distance_m", -1f)
+                _proximityLiveLastSeenMs.value = prefs.getLong("proximity_live_last_seen_ms", 0L)
+                _proximityUnlockArmed.value = prefs.getBoolean("proximity_unlock_armed", true)
+                _proximityMacLockStateGuess.value = prefs.getString("proximity_mac_lock_state_guess", "UNKNOWN") ?: "UNKNOWN"
+                delay(1500)
+            }
+        }
+    }
+
+    private fun rssiToDistanceMeters(rssi: Int): Float {
+        val txPowerAt1m = -59.0
+        val pathLossExponent = 2.0
+        val distance = 10.0.pow((txPowerAt1m - rssi) / (10.0 * pathLossExponent))
+        return distance.toFloat().coerceIn(0.1f, 20f)
+    }
+
+    private fun distanceMetersToRssi(distanceMeters: Float): Int {
+        val txPowerAt1m = -59.0
+        val pathLossExponent = 2.0
+        val safeDistance = distanceMeters.coerceAtLeast(0.1f).toDouble()
+        val rssi = txPowerAt1m - (10.0 * pathLossExponent * log10(safeDistance))
+        return rssi.toInt().coerceIn(-90, -40)
+    }
+
     fun refreshLocalIp() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
@@ -856,6 +1109,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             delay(500)
             _webBridgeRunning.value = RabitNetworkServer.isRunning
             _webBridgePin.value = pin
+            _webBridgeSelfTestStatus.value = "Not tested"
         }
     }
 
@@ -866,8 +1120,76 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().startService(intent)
         _webBridgeEnabled.value = false
         _webBridgeRunning.value = false
+        _webBridgeSelfTestStatus.value = "Bridge stopped"
         clearSharedFiles() // Clear on stop for security
         stopP2PHosting() // Also stop P2P when bridge stops
+    }
+
+    fun runWebBridgeConnectivitySelfTest() {
+        if (_webBridgeSelfTestInProgress.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            _webBridgeSelfTestInProgress.value = true
+            try {
+                _webBridgeRunning.value = RabitNetworkServer.isRunning
+                if (!_webBridgeRunning.value) {
+                    _webBridgeSelfTestStatus.value = "FAIL: Web Bridge is not running"
+                    return@launch
+                }
+
+                refreshLocalIp()
+                delay(200)
+                val host = _localIp.value
+                if (host == "0.0.0.0") {
+                    _webBridgeSelfTestStatus.value = "FAIL: Could not resolve phone Wi-Fi IP"
+                    return@launch
+                }
+
+                val rootUrl = "http://$host:8080/"
+                val rootCode = runCatching {
+                    val conn = (URL(rootUrl).openConnection() as HttpURLConnection).apply {
+                        requestMethod = "GET"
+                        connectTimeout = 2500
+                        readTimeout = 2500
+                    }
+                    conn.responseCode.also { conn.disconnect() }
+                }.getOrElse {
+                    _webBridgeSelfTestStatus.value = "FAIL: Port 8080 unreachable (${it.message ?: "network error"})"
+                    return@launch
+                }
+
+                if (rootCode !in 200..399) {
+                    _webBridgeSelfTestStatus.value = "FAIL: Unexpected bridge root response ($rootCode)"
+                    return@launch
+                }
+
+                val pin = _webBridgePin.value.ifBlank { RabitNetworkServer.currentPin }
+                val authCode = runCatching {
+                    val conn = (URL("http://$host:8080/auth").openConnection() as HttpURLConnection).apply {
+                        requestMethod = "POST"
+                        connectTimeout = 3000
+                        readTimeout = 3000
+                        doOutput = true
+                        setRequestProperty("Content-Type", "application/json")
+                        setRequestProperty("X-Device-Id", "rabit-self-test")
+                    }
+                    val payload = "{\"pin\":\"$pin\"}".toByteArray(Charsets.UTF_8)
+                    conn.outputStream.use { it.write(payload) }
+                    conn.responseCode.also { conn.disconnect() }
+                }.getOrElse {
+                    _webBridgeSelfTestStatus.value = "FAIL: /auth probe failed (${it.message ?: "network error"})"
+                    return@launch
+                }
+
+                val ts = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(System.currentTimeMillis())
+                _webBridgeSelfTestStatus.value = if (authCode == 200) {
+                    "PASS @ $ts: Reachable + auth OK for helper"
+                } else {
+                    "FAIL @ $ts: /auth returned $authCode (refresh PIN and retry)"
+                }
+            } finally {
+                _webBridgeSelfTestInProgress.value = false
+            }
+        }
     }
 
     fun startP2PHosting() {
@@ -907,6 +1229,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startAirPlayReceiver() {
+        refreshAirPlayDecoderCapability()
         val intent = Intent(getApplication<Application>(), com.example.rabit.data.airplay.AirPlayReceiverService::class.java).apply {
             action = com.example.rabit.data.airplay.AirPlayReceiverService.ACTION_START
         }
@@ -916,7 +1239,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             getApplication<Application>().startService(intent)
         }
         _airPlayReceiverEnabled.value = true
-        _airPlayStatus.value = "Advertising _raop._tcp on local Wi-Fi"
+        _airPlayStatus.value = "Discovery preview: advertising _raop._tcp on local Wi-Fi"
+        val ts = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(System.currentTimeMillis())
+        _airPlayStatusLog.value = (listOf("[$ts] Discovery preview start requested") + _airPlayStatusLog.value).take(24)
         prefs.edit().putBoolean("airplay_receiver_enabled", true).apply()
     }
 
@@ -927,7 +1252,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().startService(intent)
         _airPlayReceiverEnabled.value = false
         _airPlayStatus.value = "Idle"
+        val ts = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(System.currentTimeMillis())
+        _airPlayStatusLog.value = (listOf("[$ts] Discovery preview stop requested") + _airPlayStatusLog.value).take(24)
         prefs.edit().putBoolean("airplay_receiver_enabled", false).apply()
+    }
+
+    fun restartAirPlayReceiver() {
+        stopAirPlayReceiver()
+        viewModelScope.launch {
+            delay(500)
+            startAirPlayReceiver()
+        }
+    }
+
+    fun clearAirPlayStatusLog() {
+        _airPlayStatusLog.value = listOf("Idle")
     }
 
     fun playAirPlayTestTone() {
@@ -961,6 +1300,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun connectWithRetry(device: BluetoothDevice) = repository.connectWithRetry(device)
 
     private fun reconnectLastSavedDevice() {
+        if (!_autoReconnectEnabled.value) return
         val target = _savedDevices.value.firstOrNull() ?: return
         val bluetoothManager = getApplication<Application>().getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val bluetoothAdapter = bluetoothManager.adapter
@@ -1025,49 +1365,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun generateSmartMacro(intent: String) {
         if (intent.isBlank()) return
-        viewModelScope.launch {
+        macroJob?.cancel()
+        macroJob = viewModelScope.launch {
             _genieState.value = GenieState.Thinking
             try {
-                val ggufPath = prefs.getString("gguf_path", null)
-                if (ggufPath == null) {
-                    _genieState.value = GenieState.Error("Offline model not configured in Settings.")
+                val script = generateMacroScript(intent)
+                val commands = parseMacroCommands(script)
+                if (commands.isEmpty()) {
+                    _genieState.value = GenieState.Error("Could not generate a macro for this intent.")
                     return@launch
                 }
 
-                val initialized = localLlmManager.initialize(ggufPath)
-                if (!initialized) {
-                    _genieState.value = GenieState.Error("Failed to initialize AI.")
-                    return@launch
-                }
-
-                val prompt = """
-                    You are Infrastructure AI Genie, a professional HID automation engine. 
-                    Convert user intent into a sequence of Control Command Tags.
-                    
-                    TAGS:
-                    - [K:MOD+KEY] -> Key combo (Mods: GUI/CMD, SHIFT, ALT/OPT, CTRL. Keys: A-Z, 0-9, SPACE, ENTER, TAB, ESC)
-                    - [T:TEXT] -> Type literal text string
-                    - [W:MS] -> Wait/Delay in milliseconds
-                    - [S:KEY] -> Special key (MUTE, VOL_UP, VOL_DOWN, PLAY, BRIGHT_UP)
-                    
-                    EXAMPLES:
-                    - "Open Chrome and search for Rabit" -> [K:GUI+SPACE][W:200][T:Chrome][K:ENTER][W:800][K:GUI+L][T:google.com][K:ENTER][W:500][T:Rabit Pro][K:ENTER]
-                    - "Mute and lock" -> [S:MUTE][W:100][K:GUI+CTRL+Q]
-                    - "Next song" -> [S:PLAY]
-                    
-                    User Intent: "$intent"
-                    Output ONLY the Tag sequence. Do not explain.
-                """.trimIndent()
-
-                val response = localLlmManager.generateResponse(prompt).trim()
-                if (response.isNotEmpty()) {
-                    executeAdvancedMacro(response)
-                    _genieState.value = GenieState.Success(intent)
-                    delay(3000)
-                    _genieState.value = GenieState.Idle
-                } else {
-                    _genieState.value = GenieState.Error("AI returned empty sequence.")
-                }
+                executeAdvancedMacro(commands)
+                _genieState.value = GenieState.Success(intent)
+                delay(1500)
+                _genieState.value = GenieState.Idle
+            } catch (_: CancellationException) {
+                _genieState.value = GenieState.Idle
             } catch (e: Exception) {
                 _genieState.value = GenieState.Error(e.message ?: "Genie failed")
             }
@@ -1081,39 +1395,78 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _genieState.value = GenieState.Idle
     }
 
-    private suspend fun executeAdvancedMacro(script: String) {
-        macroJob = CoroutineScope(Dispatchers.Main).launch {
-            val commandRegex = Regex("\\[(K|T|W|S):([^\\]]+)\\]")
-            val matches = commandRegex.findAll(script).toList()
-            
-            matches.forEachIndexed { index, matchResult ->
-                val type = matchResult.groupValues[1]
-                val value = matchResult.groupValues[2]
-                val progress = (index + 1).toFloat() / matches.size
-                
-                when (type) {
-                    "K" -> {
-                        _genieState.value = GenieState.Executing("Keys: $value", progress)
-                        executeKeyCombo(value)
-                    }
-                    "T" -> {
-                        _genieState.value = GenieState.Executing("Typing...", progress)
-                        repository.sendText(value)
-                    }
-                    "W" -> {
-                        val ms = value.toLongOrNull() ?: 100L
-                        _genieState.value = GenieState.Executing("Waiting $ms ms", progress)
-                        delay(ms)
-                    }
-                    "S" -> {
-                        _genieState.value = GenieState.Executing("Consumer: $value", progress)
-                        executeSpecialKey(value)
-                    }
+    private data class MacroCommand(val type: String, val value: String)
+
+    private fun parseMacroCommands(script: String): List<MacroCommand> {
+        val commandRegex = Regex("\\[(K|T|W|S):([^\\]]+)\\]")
+        return commandRegex.findAll(script).map { match ->
+            MacroCommand(type = match.groupValues[1], value = match.groupValues[2])
+        }.toList()
+    }
+
+    private suspend fun generateMacroScript(intent: String): String {
+        val ggufPath = prefs.getString("gguf_path", null)
+        if (!ggufPath.isNullOrBlank()) {
+            val initialized = localLlmManager.initialize(ggufPath)
+            if (initialized) {
+                val prompt = """
+                    Convert the user intent into only command tags.
+                    Allowed tags: [K:...], [T:...], [W:...], [S:...]
+                    User Intent: "$intent"
+                    Output only tags with no explanation.
+                """.trimIndent()
+                val response = localLlmManager.generateResponse(prompt).trim()
+                if (response.contains("[")) {
+                    return response
                 }
-                delay(120) // Pro delay for OS stability
             }
-            delay(1000)
-            _genieState.value = GenieState.Idle
+        }
+        return buildFallbackMacroScript(intent)
+    }
+
+    private fun buildFallbackMacroScript(intent: String): String {
+        val lower = intent.lowercase(Locale.getDefault())
+        return when {
+            "mute" in lower && "lock" in lower -> "[S:MUTE][W:120][K:CTRL+GUI+Q]"
+            "mute" in lower -> "[S:MUTE]"
+            "volume up" in lower || "increase volume" in lower -> "[S:VOL_UP]"
+            "volume down" in lower || "decrease volume" in lower -> "[S:VOL_DOWN]"
+            "next" in lower && "song" in lower -> "[S:PLAY]"
+            "play" in lower || "pause" in lower -> "[S:PLAY]"
+            "lock" in lower && "screen" in lower -> "[K:CTRL+GUI+Q]"
+            "spotlight" in lower -> "[K:GUI+SPACE]"
+            "open" in lower -> {
+                val appName = intent.substringAfter("open", "").trim().ifBlank { "Safari" }
+                "[K:GUI+SPACE][W:200][T:$appName][W:250][K:ENTER]"
+            }
+            else -> "[T:$intent]"
+        }
+    }
+
+    private suspend fun executeAdvancedMacro(commands: List<MacroCommand>) {
+        commands.forEachIndexed { index, cmd ->
+            val progress = (index + 1).toFloat() / commands.size
+
+            when (cmd.type) {
+                "K" -> {
+                    _genieState.value = GenieState.Executing("Keys: ${cmd.value}", progress)
+                    executeKeyCombo(cmd.value)
+                }
+                "T" -> {
+                    _genieState.value = GenieState.Executing("Typing...", progress)
+                    repository.sendText(cmd.value)
+                }
+                "W" -> {
+                    val ms = cmd.value.toLongOrNull()?.coerceIn(0L, 5_000L) ?: 120L
+                    _genieState.value = GenieState.Executing("Waiting $ms ms", progress)
+                    delay(ms)
+                }
+                "S" -> {
+                    _genieState.value = GenieState.Executing("Consumer: ${cmd.value}", progress)
+                    executeSpecialKey(cmd.value)
+                }
+            }
+            delay(120)
         }
     }
 
@@ -1162,10 +1515,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun executeMacroSequence(sequence: String) {
-        // Obsolete - Replaced by Advanced Macro DSL
-    }
-    
     fun sendMouseMove(dx: Float, dy: Float, buttons: Int = 0, wheel: Int = 0) {
         if (buttons != 0 || wheel != 0) {
             repository.sendMouseMove(dx, dy, buttons, wheel)
@@ -1245,6 +1594,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return null
     }
 
+    fun addOrUpdateVaultEntry(appName: String, username: String, password: String, notes: String = "") {
+        val normalizedApp = appName.trim()
+        val normalizedPassword = password.trim()
+        if (normalizedApp.isBlank() || normalizedPassword.isBlank()) return
+
+        val now = System.currentTimeMillis()
+        val existing = _passwordVaultEntries.value.firstOrNull {
+            it.appName.equals(normalizedApp, ignoreCase = true)
+        }
+
+        val entry = VaultEntry(
+            id = existing?.id ?: UUID.randomUUID().toString(),
+            appName = normalizedApp,
+            username = username.trim(),
+            password = normalizedPassword,
+            notes = notes.trim(),
+            updatedAtMs = now
+        )
+
+        val updated = _passwordVaultEntries.value
+            .filterNot { it.id == entry.id }
+            .toMutableList()
+            .apply { add(0, entry) }
+
+        _passwordVaultEntries.value = updated
+        savePasswordVaultEntries(updated)
+    }
+
+    fun deleteVaultEntry(id: String) {
+        val updated = _passwordVaultEntries.value.filterNot { it.id == id }
+        _passwordVaultEntries.value = updated
+        savePasswordVaultEntries(updated)
+    }
+
+    fun sendVaultPasswordToHost(entryId: String): String? {
+        if (connectionState.value !is HidDeviceManager.ConnectionState.Connected) {
+            return "Connect to your Mac first."
+        }
+
+        val entry = _passwordVaultEntries.value.firstOrNull { it.id == entryId }
+            ?: return "Password entry not found."
+
+        if (entry.password.isBlank()) {
+            return "Selected entry has no password."
+        }
+
+        repository.unlockMac(
+            password = entry.password,
+            pressEnterBefore = _macAutofillPreEnter.value,
+            pressEnterAfter = _macAutofillPostEnter.value
+        )
+        return null
+    }
+
     fun sendMacro(macro: String) {
         executeMacro2Script(macro)
     }
@@ -1269,6 +1672,100 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             SystemShortcut.BRIGHTNESS_UP -> repository.sendConsumerKey(HidKeyCodes.BRIGHTNESS_UP)
             SystemShortcut.BRIGHTNESS_DOWN -> repository.sendConsumerKey(HidKeyCodes.BRIGHTNESS_DOWN)
             SystemShortcut.LOCK_SCREEN -> sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_CTRL, HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.KEY_Q))
+        }
+    }
+
+    fun runEmergencyAction(action: EmergencyAction) {
+        when (action) {
+            EmergencyAction.LOCK_MACHINE -> {
+                sendSystemShortcut(SystemShortcut.LOCK_SCREEN)
+                _emergencyStatus.value = "Lock command sent."
+            }
+
+            EmergencyAction.STOP_AUDIO -> {
+                sendSystemShortcut(SystemShortcut.MUTE)
+                sendMediaPlayPause()
+                stopAirPlayReceiver()
+                _emergencyStatus.value = "Audio emergency stop sent."
+            }
+
+            EmergencyAction.CLEAR_CLIPBOARD -> {
+                val clipboard = getApplication<Application>().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("rabit-clear", ""))
+
+                viewModelScope.launch(Dispatchers.IO) {
+                    val ok = runEmergencySshCommand("pbcopy < /dev/null")
+                    _emergencyStatus.value = if (ok) {
+                        "Phone and Mac clipboard cleared."
+                    } else {
+                        "Phone clipboard cleared. Connect SSH to clear Mac clipboard too."
+                    }
+                }
+            }
+
+            EmergencyAction.KILL_INTERNET_ADAPTER -> {
+                viewModelScope.launch(Dispatchers.IO) {
+                    val cmd = """
+                                                IFACE=${'$'}(networksetup -listallhardwareports | awk '/Wi-Fi|AirPort/{getline; print ${'$'}2; exit}')
+                                                if [ -n "${'$'}IFACE" ]; then
+                                                    networksetup -setairportpower "${'$'}IFACE" off
+                        else
+                          ifconfig en0 down || ifconfig en1 down
+                        fi
+                    """.trimIndent()
+                    val ok = runEmergencySshCommand(cmd)
+                    _emergencyStatus.value = if (ok) {
+                        "Mac network adapter disabled."
+                    } else {
+                        "SSH not connected or command failed. Open SSH Terminal and connect host first."
+                    }
+                }
+            }
+
+            EmergencyAction.CLOSE_SENSITIVE_APPS -> {
+                viewModelScope.launch(Dispatchers.IO) {
+                    val cmd = "osascript -e 'tell application \"Safari\" to quit' -e 'tell application \"Google Chrome\" to quit' -e 'tell application \"Arc\" to quit' -e 'tell application \"Slack\" to quit' -e 'tell application \"Discord\" to quit' -e 'tell application \"Messages\" to quit' -e 'tell application \"Mail\" to quit' -e 'tell application \"Notes\" to quit'"
+                    val ok = runEmergencySshCommand(cmd)
+                    if (ok) {
+                        _emergencyStatus.value = "Sensitive apps closed on Mac."
+                    } else {
+                        sendKeyCombination(listOf(HidKeyCodes.MODIFIER_LEFT_GUI, HidKeyCodes.KEY_Q))
+                        _emergencyStatus.value = "SSH unavailable. Sent Cmd+Q to close the current active app."
+                    }
+                }
+            }
+        }
+    }
+
+    private fun runEmergencySshCommand(command: String): Boolean {
+        return try {
+            val session = sshSession
+            if (session == null || !session.isConnected) return false
+
+            val exec = session.openChannel("exec") as ChannelExec
+            exec.setCommand(command)
+            exec.setPty(true)
+            exec.inputStream = null
+            val stderrBuffer = ByteArrayOutputStream()
+            exec.setErrStream(stderrBuffer)
+            val stdout = exec.inputStream
+            exec.connect(8_000)
+
+            val outText = stdout.readBytes().toString(Charsets.UTF_8)
+            val errText = stderrBuffer.toString(Charsets.UTF_8.name())
+            if (outText.isNotBlank()) {
+                outText.lines().filter { it.isNotBlank() }.forEach { appendTerminalLine(it) }
+            }
+            if (errText.isNotBlank()) {
+                errText.lines().filter { it.isNotBlank() }.forEach { appendTerminalLine("ERR: $it") }
+            }
+
+            val exitCode = exec.exitStatus
+            exec.disconnect()
+            exitCode == 0
+        } catch (e: Exception) {
+            appendTerminalLine("Emergency action failed: ${e.message}")
+            false
         }
     }
 
@@ -1456,6 +1953,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _macPassword.value = ""
     }
 
+    private fun loadPasswordVaultEntries(): List<VaultEntry> {
+        return try {
+            val raw = secureStorage.getPasswordVaultJson()
+            val arr = JSONArray(raw)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val obj = arr.getJSONObject(i)
+                    add(
+                        VaultEntry(
+                            id = obj.optString("id", UUID.randomUUID().toString()),
+                            appName = obj.optString("appName"),
+                            username = obj.optString("username"),
+                            password = obj.optString("password"),
+                            notes = obj.optString("notes"),
+                            updatedAtMs = obj.optLong("updatedAtMs", 0L)
+                        )
+                    )
+                }
+            }.sortedByDescending { it.updatedAtMs }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun savePasswordVaultEntries(entries: List<VaultEntry>) {
+        val arr = JSONArray()
+        entries.forEach { entry ->
+            arr.put(
+                JSONObject().apply {
+                    put("id", entry.id)
+                    put("appName", entry.appName)
+                    put("username", entry.username)
+                    put("password", entry.password)
+                    put("notes", entry.notes)
+                    put("updatedAtMs", entry.updatedAtMs)
+                }
+            )
+        }
+        secureStorage.savePasswordVaultJson(arr.toString())
+    }
+
     fun clearUnlockPassword() {
         secureStorage.saveUnlockPassword("")
         _unlockPassword.value = ""
@@ -1483,6 +2021,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _proximityNearRssi.value = clamped
     }
 
+    fun setProximityUnlockDistanceMeters(distanceMeters: Float) {
+        val clampedDistance = distanceMeters.coerceIn(0.5f, 8.0f)
+        val nearRssi = distanceMetersToRssi(clampedDistance)
+        val farRssi = (nearRssi - 18).coerceIn(-100, -50)
+        prefs.edit()
+            .putInt("proximity_near_rssi", nearRssi)
+            .putInt("proximity_far_rssi", farRssi)
+            .apply()
+        _proximityNearRssi.value = nearRssi
+        _proximityFarRssi.value = farRssi
+    }
+
     fun setProximityFarRssi(value: Int) {
         val clamped = value.coerceIn(-100, -50)
         prefs.edit().putInt("proximity_far_rssi", clamped).apply()
@@ -1503,6 +2053,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setProximityTargetAddress(address: String) {
         prefs.edit().putString("proximity_target_address", address).apply()
         _proximityTargetAddress.value = address
+    }
+
+    fun proximityNearDistanceMeters(): Float {
+        return rssiToDistanceMeters(_proximityNearRssi.value)
     }
 
     fun setTypingSpeed(speed: String) {
@@ -1858,18 +2412,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val resolver = app.contentResolver
         val now = System.currentTimeMillis()
 
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        } else {
+            @Suppress("DEPRECATION")
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val rabitDir = File(downloadsDir, "Hackie")
+            if (!rabitDir.exists()) rabitDir.mkdirs()
+            MediaStore.Files.getContentUri("external")
+        }
+
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, session.fileName)
             put(MediaStore.MediaColumns.MIME_TYPE, session.mimeType)
             put(MediaStore.MediaColumns.DATE_ADDED, now / 1000)
             put(MediaStore.MediaColumns.DATE_MODIFIED, now / 1000)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Rabit")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Hackie")
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
+            } else {
+                @Suppress("DEPRECATION")
+                val target = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "Hackie/${session.fileName}"
+                )
+                put(MediaStore.MediaColumns.DATA, target.absolutePath)
             }
         }
 
-        val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         val itemUri = resolver.insert(collection, values)
             ?: throw IllegalStateException("Unable to create destination in Downloads")
 
@@ -2009,7 +2579,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun executeDuckyScript(script: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val lines = script.lines().map { it.trim() }.filter { it.isNotBlank() && !it.uppercase().startsWith("REM ") }
-            var defaultDelay = 10L
+            var defaultDelay = 80L
             for (line in lines) {
                 val parts = line.split(" ", limit = 2)
                 val cmd = parts[0].uppercase()
@@ -2063,19 +2633,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         repository.sendKey(key, HidKeyCodes.MODIFIER_LEFT_ALT)
                     }
                     "MAC_STEALTH" -> {
-                        // Shortcut block to quickly run commands invisibly on Mac
+                        // Run command in Terminal with safer timing, then hide Terminal.
                         repository.sendKey(HidKeyCodes.KEY_SPACE, HidKeyCodes.MODIFIER_LEFT_GUI)
-                        delay(300)
-                        repository.sendText("terminal")
-                        delay(200)
+                        delay(420)
+                        repository.sendText("Terminal")
+                        delay(320)
                         repository.sendKey(HidKeyCodes.KEY_ENTER)
-                        delay(500)
-                        repository.sendKey(HidKeyCodes.KEY_M, HidKeyCodes.MODIFIER_LEFT_GUI) // minimize it immediately
-                        delay(200)
-                        repository.sendText(arg) // target payload
+                        delay(1100)
+                        repository.sendText(arg)
                         repository.sendKey(HidKeyCodes.KEY_ENTER)
-                        delay(300)
-                        repository.sendKey(HidKeyCodes.KEY_Q, HidKeyCodes.MODIFIER_LEFT_GUI) // quit terminal cleanly
+                        delay(350)
+                        repository.sendKey(HidKeyCodes.KEY_M, HidKeyCodes.MODIFIER_LEFT_GUI)
                     }
                     "SHIFT" -> {
                         val keyMap = mapOf("ENTER" to HidKeyCodes.KEY_ENTER, "TAB" to HidKeyCodes.KEY_TAB)
@@ -2187,8 +2755,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         LOCK_SCREEN
     }
 
+    enum class EmergencyAction {
+        LOCK_MACHINE,
+        KILL_INTERNET_ADAPTER,
+        STOP_AUDIO,
+        CLEAR_CLIPBOARD,
+        CLOSE_SENSITIVE_APPS
+    }
+
     private val _activeProfile = MutableStateFlow(MacroProfile.GENERAL)
     val activeProfile = _activeProfile.asStateFlow()
+    private val _emergencyStatus = MutableStateFlow("Idle")
+    val emergencyStatus = _emergencyStatus.asStateFlow()
 
     fun setMacroProfile(profile: MacroProfile) {
         _activeProfile.value = profile
@@ -2210,6 +2788,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         RabitNetworkServer.audioStreamStartReceiver = null
         RabitNetworkServer.audioStreamChunkReceiver = null
         RabitNetworkServer.audioStreamStopReceiver = null
+        proximityTelemetryJob?.cancel()
         wifiAudioSink.release()
         disconnectSsh()
         prefs.unregisterOnSharedPreferenceChangeListener(prefListener)
@@ -2254,6 +2833,14 @@ data class CustomMacro(
     val onlyWhenApp: String? = null
 )
 data class SavedDevice(val name: String, val address: String, val lastConnected: Long)
+data class VaultEntry(
+    val id: String,
+    val appName: String,
+    val username: String,
+    val password: String,
+    val notes: String,
+    val updatedAtMs: Long
+)
 enum class HostProfilePreset { AUTO, MAC, WINDOWS, LINUX }
 enum class TransferQueueStatus { Queued, Ready, Failed }
 data class SharedTransferItem(

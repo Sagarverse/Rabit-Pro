@@ -18,9 +18,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -42,11 +44,12 @@ import com.example.rabit.ui.assistant.AssistantViewModel
 import com.example.rabit.ui.keyboard.KeyboardScreen
 import com.example.rabit.ui.onboarding.OnboardingScreen
 import com.example.rabit.ui.pairing.PairingScreen
+import com.example.rabit.ui.settings.PasswordManagerScreen
 import com.example.rabit.ui.settings.SettingsScreen
-import com.example.rabit.ui.shortcuts.ShortcutsGuideScreen
 import com.example.rabit.ui.snippets.SnippetsScreen
 import com.example.rabit.ui.profile.ProfileScreen
 import com.example.rabit.ui.automation.AutomationDashboardScreen
+import com.example.rabit.ui.search.GlobalSearchScreen
 import com.example.rabit.ui.theme.RabitTheme
 
 class MainActivity : FragmentActivity() {
@@ -130,6 +133,7 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
     val featureShortcutsVisible by viewModel.featureShortcutsVisible.collectAsState()
     val featureWakeOnLanVisible by viewModel.featureWakeOnLanVisible.collectAsState()
     val featureSshTerminalVisible by viewModel.featureSshTerminalVisible.collectAsState()
+    val webBridgeEnabled by viewModel.webBridgeEnabled.collectAsState()
 
     // Routes that should NOT show the professional drawer (Onboarding & Initial Pairing)
     val noDrawerRoutes = listOf("onboarding", "pairing", "onboarding_splash", "assistant")
@@ -139,11 +143,12 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
         return when (route) {
             "web_bridge" -> featureWebBridgeVisible
             "automation" -> featureAutomationVisible
+            "shortcuts" -> featureAutomationVisible
             "assistant" -> featureAssistantVisible
             "snippets" -> featureSnippetsVisible
-            "shortcuts" -> featureShortcutsVisible
             "wake_on_lan" -> featureWakeOnLanVisible
             "ssh_terminal" -> featureSshTerminalVisible
+            "global_search" -> true
             else -> true
         }
     }
@@ -154,7 +159,6 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
         featureAutomationVisible,
         featureAssistantVisible,
         featureSnippetsVisible,
-        featureShortcutsVisible,
         featureWakeOnLanVisible,
         featureSshTerminalVisible
     ) {
@@ -184,20 +188,34 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                     PairingScreen(
                         viewModel = viewModel,
                         onConnected = { navController.navigate("keyboard") },
+                        onNavigateToKeyboard = { navController.navigate("keyboard") },
                         onNavigateToSettings = { navController.navigate("settings") },
                         onNavigateToAssistant = { if (featureAssistantVisible) navController.navigate("assistant") },
                         onNavigateToWebBridge = { if (featureWebBridgeVisible) navController.navigate("web_bridge") },
-                        onNavigateToInjector = { navController.navigate("injector") }
+                        onNavigateToInjector = { navController.navigate("injector") },
+                        onNavigateToMediaDeck = { navController.navigate("media_deck") },
+                        onNavigateToAirPlayReceiver = { navController.navigate("airplay_receiver") },
+                        onNavigateToWakeOnLan = { if (featureWakeOnLanVisible) navController.navigate("wake_on_lan") },
+                        onNavigateToSshTerminal = { if (featureSshTerminalVisible) navController.navigate("ssh_terminal") },
+                        onNavigateToGlobalSearch = { navController.navigate("global_search") },
+                        onNavigateToSnippets = { if (featureSnippetsVisible) navController.navigate("snippets") },
+                        onNavigateToAutomation = { if (featureAutomationVisible) navController.navigate("automation") },
+                        onNavigateToProfile = { navController.navigate("profile") },
+                        onNavigateToCustomization = { navController.navigate("customization") },
+                        onNavigateToPasswordManager = { navController.navigate("password_manager") }
                     )
                 }
                 composable("keyboard") {
                     KeyboardScreen(
                         viewModel = viewModel,
-                        onDisconnect = { navController.navigate("pairing") { popUpTo(0) } },
+                        onDisconnect = { 
+                            viewModel.disconnectKeyboard()
+                            navController.navigate("pairing") { popUpTo(0) } 
+                        },
                         onNavigateToSettings = { navController.navigate("settings") },
                         onNavigateToAssistant = { if (featureAssistantVisible) navController.navigate("assistant") },
                         onNavigateToSnippets = { if (featureSnippetsVisible) navController.navigate("snippets") },
-                        onNavigateToShortcuts = { if (featureShortcutsVisible) navController.navigate("shortcuts") },
+                        onNavigateToAutomation = { if (featureAutomationVisible) navController.navigate("automation") },
                         onNavigateToWebBridge = { if (featureWebBridgeVisible) navController.navigate("web_bridge") }
                     )
                 }
@@ -249,7 +267,12 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                                 launchSingleTop = true
                             }
                         },
-                        onNavigateToKeyboard = { navController.navigate("keyboard") }
+                        onNavigateToKeyboard = { navController.navigate("keyboard") },
+                        onNavigate = { route ->
+                            navController.navigate(route) {
+                                launchSingleTop = true
+                            }
+                        }
                     )
                 }
                 composable("injector") {
@@ -263,11 +286,18 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                         viewModel,
                         onBack = { navController.popBackStack() },
                         onNavigateToProfile = { navController.navigate("profile") },
-                        onNavigateToCustomization = { navController.navigate("customization") }
+                        onNavigateToCustomization = { navController.navigate("customization") },
+                        onNavigateToPasswordManager = { navController.navigate("password_manager") }
                     )
                 }
                 composable("customization") {
                     com.example.rabit.ui.settings.CustomizationScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable("password_manager") {
+                    PasswordManagerScreen(
                         viewModel = viewModel,
                         onBack = { navController.popBackStack() }
                     )
@@ -279,7 +309,70 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
                     SnippetsScreen(viewModel, onBack = { navController.popBackStack() })
                 }
                 composable("shortcuts") {
-                    ShortcutsGuideScreen(viewModel, onBack = { navController.popBackStack() })
+                    AutomationDashboardScreen(
+                        viewModel = viewModel,
+                        onBack = { navController.popBackStack() },
+                        onNavigateToWakeOnLan = { if (featureWakeOnLanVisible) navController.navigate("wake_on_lan") },
+                        onNavigateToSshTerminal = { if (featureSshTerminalVisible) navController.navigate("ssh_terminal") }
+                    )
+                }
+                composable("global_search") {
+                    val available = buildSet {
+                        add("keyboard")
+                        add("injector")
+                        add("media_deck")
+                        add("airplay_receiver")
+                        add("settings")
+                        add("customization")
+                        add("password_manager")
+                        add("profile")
+                        if (featureWebBridgeVisible) add("web_bridge")
+                        if (featureAutomationVisible) add("automation")
+                        if (featureAssistantVisible) add("assistant")
+                        if (featureSnippetsVisible) add("snippets")
+                        if (featureWakeOnLanVisible) add("wake_on_lan")
+                        if (featureSshTerminalVisible) add("ssh_terminal")
+                    }
+                    val availableActions = buildSet {
+                        add("action_unlock_mac")
+                        add("action_lock_screen")
+                        add("action_media_play_pause")
+                        add("action_media_vol_up")
+                        add("action_media_vol_down")
+                        add("action_now_playing")
+                        add("action_disconnect_keyboard")
+                        if (featureWakeOnLanVisible) add("action_wol_send")
+                        if (featureWebBridgeVisible) add("action_web_bridge_toggle")
+                    }
+                    GlobalSearchScreen(
+                        currentRoute = currentRoute.split("?").first(),
+                        availableRoutes = available,
+                        availableActionIds = availableActions,
+                        onBack = { navController.popBackStack() },
+                        onNavigate = { route ->
+                            if (!routeAllowed(route)) return@GlobalSearchScreen
+                            navController.navigate(route) {
+                                launchSingleTop = true
+                            }
+                        },
+                        onExecuteAction = { actionId ->
+                            when (actionId) {
+                                "action_unlock_mac" -> viewModel.unlockMac()
+                                "action_lock_screen" -> viewModel.sendSystemShortcut(MainViewModel.SystemShortcut.LOCK_SCREEN)
+                                "action_media_play_pause" -> viewModel.sendMediaPlayPause()
+                                "action_media_vol_up" -> viewModel.sendMediaVolumeUp()
+                                "action_media_vol_down" -> viewModel.sendMediaVolumeDown()
+                                "action_now_playing" -> viewModel.requestNowPlayingFromHost()
+                                "action_wol_send" -> if (featureWakeOnLanVisible) viewModel.sendWakeOnLan()
+                                "action_disconnect_keyboard" -> viewModel.disconnectKeyboard()
+                                "action_web_bridge_toggle" -> {
+                                    if (featureWebBridgeVisible) {
+                                        if (webBridgeEnabled) viewModel.stopWebBridge() else viewModel.startWebBridge()
+                                    }
+                                }
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -302,10 +395,21 @@ fun AppNavigation(viewModel: MainViewModel, assistantViewModel: AssistantViewMod
             featureWebBridgeVisible = featureWebBridgeVisible,
             featureAutomationVisible = featureAutomationVisible,
             featureAssistantVisible = featureAssistantVisible,
+            featureSnippetsVisible = featureSnippetsVisible,
+            featureShortcutsVisible = featureShortcutsVisible,
             featureWakeOnLanVisible = featureWakeOnLanVisible,
             featureSshTerminalVisible = featureSshTerminalVisible,
             activeApp = activeApp,
-            onBack = { navController.popBackStack() }
+            onBack = { navController.popBackStack() },
+            topBarActions = {
+                IconButton(onClick = {
+                    if (currentRoute.split("?").first() != "global_search") {
+                        navController.navigate("global_search") { launchSingleTop = true }
+                    }
+                }) {
+                    Icon(Icons.Default.Search, contentDescription = "Open global search")
+                }
+            }
         ) { padding ->
             navHost(padding)
         }

@@ -39,9 +39,16 @@ class SecureStorage(private val context: Context) {
         prefs.edit().remove(KEY_GEMINI_API).apply()
     }
 
+    fun savePasswordVaultJson(json: String) {
+        prefs.edit().putString(KEY_PASSWORD_VAULT_JSON, json).apply()
+    }
+
+    fun getPasswordVaultJson(): String = prefs.getString(KEY_PASSWORD_VAULT_JSON, "[]") ?: "[]"
+
     companion object {
         private const val KEY_GEMINI_API = "gemini_api_key"
         private const val KEY_UNLOCK_PASSWORD = "unlock_password"
         private const val KEY_MAC_PASSWORD = "mac_password"
+        private const val KEY_PASSWORD_VAULT_JSON = "password_vault_json"
     }
 }

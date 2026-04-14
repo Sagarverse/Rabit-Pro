@@ -27,29 +27,30 @@ fun PremiumChatTopBar(
     modelName: String,
     isThinking: Boolean,
     connectionState: com.example.rabit.data.bluetooth.HidDeviceManager.ConnectionState,
-    onMenuClick: () -> Unit,
+    onLeftPanelClick: () -> Unit,
+    onRightPanelClick: () -> Unit,
     onClearChat: () -> Unit,
     onNewChat: () -> Unit,
     onExportChat: () -> Unit,
-    onLaunchpadClick: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
+    var showMoreMenu by remember { mutableStateOf(false) }
     val infiniteTransition = rememberInfiniteTransition(label = "orbPulse")
     val orbAlpha by infiniteTransition.animateFloat(
         initialValue = 0.4f, targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(if (isThinking) 800 else 2000, easing = EaseInOutSine),
+            animation = tween(if (isThinking) AssistantMotion.PULSE_FAST else AssistantMotion.PULSE_IDLE, easing = EaseInOutSine),
             repeatMode = RepeatMode.Reverse
         ), label = "orbAlpha"
     )
     val orbColor by animateColorAsState(
-        targetValue = if (isThinking) AccentGold else AiOrbGlow,
-        animationSpec = tween(400),
+        targetValue = if (isThinking) AccentBlue else AiOrbGlow,
+        animationSpec = tween(AssistantMotion.COLOR_TWEEN),
         label = "orbColor"
     )
     val statusColor by animateColorAsState(
-        targetValue = if (isThinking) AccentGold.copy(alpha = 0.8f) else Platinum.copy(alpha = 0.7f),
-        animationSpec = tween(400),
+        targetValue = if (isThinking) AccentBlue.copy(alpha = 0.9f) else Platinum.copy(alpha = 0.7f),
+        animationSpec = tween(AssistantMotion.COLOR_TWEEN),
         label = "statusColor"
     )
 
@@ -69,7 +70,7 @@ fun PremiumChatTopBar(
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Minimalist Model Indicator
+                        // Model indicator with subtle pulse while thinking
                         Box(
                             modifier = Modifier
                                 .size(34.dp),
@@ -77,7 +78,7 @@ fun PremiumChatTopBar(
                         ) {
                             Text(
                                 if (modelName.contains("Gemini")) "G" else "M",
-                                color = if (isThinking) AccentGold else Platinum,
+                                color = orbColor,
                                 fontWeight = FontWeight.Black,
                                 fontSize = 22.sp,
                                 modifier = Modifier.alpha(if (isThinking) orbAlpha else 1f)
@@ -98,7 +99,7 @@ fun PremiumChatTopBar(
                                     modifier = Modifier
                                         .size(6.dp)
                                         .background(
-                                            if (isThinking) AccentGold
+                                            if (isThinking) AccentBlue
                                             else if (connectionState is com.example.rabit.data.bluetooth.HidDeviceManager.ConnectionState.Connected) SuccessGreen
                                             else Silver,
                                             CircleShape
@@ -120,22 +121,62 @@ fun PremiumChatTopBar(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onMenuClick) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Platinum)
+                    IconButton(
+                        onClick = onLeftPanelClick,
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .background(Graphite.copy(alpha = 0.45f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Platinum, modifier = Modifier.size(18.dp))
                     }
                 },
                 actions = {
-                    IconButton(onClick = onNewChat) {
-                        Icon(Icons.Default.Add, contentDescription = "New Chat", tint = Platinum)
+                    IconButton(
+                        onClick = onRightPanelClick,
+                        modifier = Modifier.background(Graphite.copy(alpha = 0.4f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Tune, contentDescription = "Open right panel", tint = AccentBlue, modifier = Modifier.size(18.dp))
                     }
-                    IconButton(onClick = onExportChat) {
-                        Icon(Icons.Default.IosShare, contentDescription = "Export Chat", tint = Silver.copy(alpha = 0.8f))
+                    IconButton(
+                        onClick = onNewChat,
+                        modifier = Modifier.background(Graphite.copy(alpha = 0.4f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "New Chat", tint = Platinum, modifier = Modifier.size(18.dp))
                     }
-                    IconButton(onClick = onClearChat) {
-                        Icon(Icons.Default.DeleteSweep, contentDescription = "Clear Chat", tint = Silver.copy(alpha = 0.6f))
-                    }
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Silver.copy(alpha = 0.8f))
+                    Box {
+                        IconButton(onClick = { showMoreMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More actions", tint = Silver.copy(alpha = 0.85f), modifier = Modifier.size(18.dp))
+                        }
+                        DropdownMenu(
+                            expanded = showMoreMenu,
+                            onDismissRequest = { showMoreMenu = false },
+                            containerColor = Graphite.copy(alpha = 0.95f)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Export Chat", color = Platinum) },
+                                leadingIcon = { Icon(Icons.Default.IosShare, contentDescription = null, tint = Silver.copy(alpha = 0.9f)) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    onExportChat()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Clear Chat", color = Platinum) },
+                                leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = Silver.copy(alpha = 0.85f)) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    onClearChat()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Settings", color = Platinum) },
+                                leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null, tint = Silver.copy(alpha = 0.9f)) },
+                                onClick = {
+                                    showMoreMenu = false
+                                    onSettingsClick()
+                                }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)

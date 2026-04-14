@@ -47,7 +47,6 @@ fun CustomizationScreen(
     val connectionState by viewModel.connectionState.collectAsState()
     val shakeToDisconnect by viewModel.shakeToDisconnectEnabled.collectAsState()
     val stealthMode by viewModel.stealthModeEnabled.collectAsState()
-    val dynamicTheme by viewModel.dynamicThemeEnabled.collectAsState()
     val autoReconnect by viewModel.autoReconnectEnabled.collectAsState()
     val password by viewModel.macPassword.collectAsState()
     val featureWebBridgeVisible by viewModel.featureWebBridgeVisible.collectAsState()
@@ -112,7 +111,7 @@ fun CustomizationScreen(
                 SettingsToggleItem(
                     title = "Press Enter Before Typing",
                     subtitle = "Wake login field before sending password",
-                    icon = Icons.Default.KeyboardReturn,
+                    icon = Icons.Default.Keyboard,
                     iconColor = AccentBlue,
                     checked = macAutofillPreEnter,
                     onCheckedChange = { viewModel.setMacAutofillPreEnter(it) }
@@ -121,7 +120,7 @@ fun CustomizationScreen(
                 SettingsToggleItem(
                     title = "Press Enter After Typing",
                     subtitle = "Submit credentials after autofill",
-                    icon = Icons.Default.Login,
+                    icon = Icons.Default.Key,
                     iconColor = SuccessGreen,
                     checked = macAutofillPostEnter,
                     onCheckedChange = { viewModel.setMacAutofillPostEnter(it) }
@@ -144,7 +143,7 @@ fun CustomizationScreen(
                             if (biometricMacAutofillEnabled) {
                                 if (biometricAuthenticator?.isBiometricAvailable() == true) {
                                     biometricAuthenticator.authenticate(
-                                        title = "Rabit Mac Autofill",
+                                        title = "Hackie Mac Autofill",
                                         subtitle = "Authenticate to type your Mac password",
                                         onSuccess = dispatchAutofill,
                                         onError = { err -> Toast.makeText(context, err, Toast.LENGTH_SHORT).show() }
@@ -260,28 +259,6 @@ fun CustomizationScreen(
                 }
             }
 
-            // ─── Visual Engine ───
-            PremiumSectionHeader("VISUAL ENGINE")
-            PremiumGlassCard {
-                SettingsToggleItem(
-                    title = "Dynamic Color Engine",
-                    subtitle = "Allow UI to use the premium accent palette",
-                    icon = Icons.Default.AutoAwesome,
-                    iconColor = AccentTeal,
-                    checked = dynamicTheme,
-                    onCheckedChange = { viewModel.setDynamicThemeEnabled(it) }
-                )
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
-                SettingsToggleItem(
-                    title = "Glassmorphism Illumination",
-                    subtitle = "Subtle glows behind premium cards",
-                    icon = Icons.Default.BlurOn,
-                    iconColor = AccentBlue,
-                    checked = dynamicTheme, // Tied to dynamic theme for pro feel
-                    onCheckedChange = { /* Tied to dynamic theme */ }
-                )
-            }
-
             PremiumSectionHeader("FEATURE VISIBILITY")
             PremiumGlassCard {
                 SettingsToggleItem(
@@ -294,8 +271,8 @@ fun CustomizationScreen(
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
                 SettingsToggleItem(
-                    title = "Show Automation Hub",
-                    subtitle = "Macro dashboard and quick tools",
+                    title = "Show Automation + Shortcuts",
+                    subtitle = "Macro dashboard, shortcut guide, and quick tools",
                     icon = Icons.Default.Bolt,
                     iconColor = AccentGold,
                     checked = featureAutomationVisible,
@@ -318,15 +295,6 @@ fun CustomizationScreen(
                     iconColor = AccentPurple,
                     checked = featureSnippetsVisible,
                     onCheckedChange = { viewModel.setFeatureSnippetsVisible(it) }
-                )
-                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
-                SettingsToggleItem(
-                    title = "Show Shortcuts Guide",
-                    subtitle = "Keyboard shortcut helper screen",
-                    icon = Icons.Default.Keyboard,
-                    iconColor = AccentPink,
-                    checked = featureShortcutsVisible,
-                    onCheckedChange = { viewModel.setFeatureShortcutsVisible(it) }
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = BorderColor.copy(alpha = 0.4f))
                 SettingsToggleItem(

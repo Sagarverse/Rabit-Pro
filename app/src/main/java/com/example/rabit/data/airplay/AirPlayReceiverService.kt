@@ -8,9 +8,11 @@ import android.content.Context
 import android.content.Intent
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.provider.Settings
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.sagar.rabit.R
 import kotlinx.coroutines.CoroutineScope
@@ -25,10 +27,15 @@ import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.ServerSocket
 import java.net.Socket
+import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * AirPlayReceiverService (experimental):
- * - Advertises Rabit as a RAOP service (_raop._tcp) on local Wi-Fi via NSD/mDNS.
+ * - Advertises Hackie as a RAOP service (_raop._tcp) on local Wi-Fi via NSD/mDNS.
  * - Keeps a foreground service alive for receiver lifecycle.
  * - Socket acceptance is currently a transport scaffold; full ALAC/RAOP decode requires
  *   a dedicated RAOP implementation/library.
@@ -37,7 +44,8 @@ class AirPlayReceiverService : Service() {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var nsdManager: NsdManager? = null
-    private var registrationListener: NsdManager.RegistrationListener? = null
+    private var raopRegistrationListener: NsdManager.RegistrationListener? = null
+    private var airplayRegistrationListener: NsdManager.RegistrationListener? = null
     private var serverSocket: ServerSocket? = null
     private var acceptJob: Job? = null
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -82,7 +90,8 @@ class AirPlayReceiverService : Service() {
         scope.launch {
             try {
                 multicastLock?.acquire()
-                serverSocket = ServerSocket(0)
+                serverSocket = runCatching { ServerSocket(PREFERRED_RAOP_PORT) }
+                    .getOrElse { ServerSocket(0) }
                 val port = serverSocket?.localPort ?: return@launch
                 registerRaopService(port)
                 updateRuntimeStatus("AirPlay ready on port $port")
@@ -133,7 +142,7 @@ class AirPlayReceiverService : Service() {
         raopEngine.onClientConnected(remote)
 
         try {
-            socket.soTimeout = 10_000
+            socket.soTimeout = 60_000
             val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
             val writer = OutputStreamWriter(socket.getOutputStream())
 
@@ -188,16 +197,23 @@ class AirPlayReceiverService : Service() {
     }
 
     private fun buildRawRtspResponse(cseq: String, response: RtspResponse): String {
+        val gmt = SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("GMT")
+        }.format(Date())
         val common = StringBuilder()
             .append("RTSP/1.0 ${response.statusCode} ${response.reason}\r\n")
             .append("CSeq: $cseq\r\n")
-            .append("Server: RabitRAOP/0.1\r\n")
+            .append("Date: $gmt\r\n")
+            .append("Server: HackieRAOP/0.1\r\n")
 
         response.headers.forEach { (k, v) ->
             common.append("$k: $v\r\n")
         }
 
         if (response.body.isNotBlank()) {
+            if ("Content-Type" !in response.headers && "content-type" !in response.headers) {
+                common.append("Content-Type: text/parameters\r\n")
+            }
             common.append("Content-Length: ${response.body.toByteArray().size}\r\n")
         }
 
@@ -209,15 +225,16 @@ class AirPlayReceiverService : Service() {
     }
 
     private fun registerRaopService(port: Int) {
-        val host = Build.MODEL.replace(" ", "")
-        val raopId = "RABIT${host.take(6).uppercase()}"
+        val raopId = buildRaopId()
+        val serviceDisplayName = "Hackie"
 
         val serviceInfo = NsdServiceInfo().apply {
-            serviceName = "$raopId@Rabit"
+            serviceName = "$raopId@$serviceDisplayName"
             serviceType = "_raop._tcp."
             setPort(port)
             setAttribute("txtvers", "1")
-            setAttribute("cn", "0,1")
+            // Force PCM-only negotiation with current native sink path.
+            setAttribute("cn", "0")
             setAttribute("ch", "2")
             setAttribute("sr", "44100")
             setAttribute("ss", "16")
@@ -225,29 +242,62 @@ class AirPlayReceiverService : Service() {
             setAttribute("vn", "3")
             setAttribute("md", "0,1,2")
             setAttribute("sf", "0x4")
-            setAttribute("am", "Rabit")
+            setAttribute("am", "HackieAndroid")
+            setAttribute("da", "true")
+            setAttribute("pw", "false")
+            // We currently support unencrypted RTP only.
+            setAttribute("et", "0")
+            setAttribute("vs", "220.68")
         }
 
-        registrationListener = object : NsdManager.RegistrationListener {
-            override fun onServiceRegistered(nsdServiceInfo: NsdServiceInfo) {}
-            override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
+        raopRegistrationListener = object : NsdManager.RegistrationListener {
+            override fun onServiceRegistered(nsdServiceInfo: NsdServiceInfo) {
+                updateRuntimeStatus("RAOP advertised as ${nsdServiceInfo.serviceName}")
+            }
+
+            override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                updateRuntimeStatus("RAOP advertise failed (error $errorCode)")
+            }
+
             override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {}
+
             override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
         }
 
-        nsdManager?.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+        nsdManager?.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, raopRegistrationListener)
+        updateRuntimeStatus("Compatibility mode: RAOP-only advertisement enabled")
     }
 
     private fun unregisterRaopService() {
-        val listener = registrationListener ?: return
-        nsdManager?.unregisterService(listener)
-        registrationListener = null
+        raopRegistrationListener?.let { listener ->
+            runCatching { nsdManager?.unregisterService(listener) }
+        }
+        raopRegistrationListener = null
+
+        airplayRegistrationListener?.let { listener ->
+            runCatching { nsdManager?.unregisterService(listener) }
+        }
+        airplayRegistrationListener = null
+    }
+
+    private fun buildRaopId(): String {
+        val androidId = runCatching {
+            Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
+        }.getOrDefault("")
+
+        val hexSeed = androidId.uppercase().filter { it in "0123456789ABCDEF" }
+        if (hexSeed.length >= 12) return hexSeed.take(12)
+
+        val fallback = MessageDigest.getInstance("SHA-1")
+            .digest((Build.MODEL + Build.DEVICE + Build.ID).toByteArray())
+            .joinToString(separator = "") { "%02X".format(it) }
+        return fallback.take(12)
     }
 
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NotificationManager::class.java)
-            val channel = NotificationChannel(CHANNEL_ID, "Rabit AirPlay", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(CHANNEL_ID, "Hackie AirPlay", NotificationManager.IMPORTANCE_LOW)
             manager.createNotificationChannel(channel)
         }
     }
@@ -255,13 +305,14 @@ class AirPlayReceiverService : Service() {
     private fun buildNotification(content: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Rabit AirPlay Receiver")
+            .setContentTitle("Hackie AirPlay Receiver")
             .setContentText(content)
             .setOngoing(true)
             .build()
     }
 
     private fun updateRuntimeStatus(content: String) {
+        Log.d("RabitAirPlay", content)
         AirPlayStateBus.publish(content)
         startForeground(NOTIFICATION_ID, buildNotification(content))
     }
@@ -280,6 +331,7 @@ class AirPlayReceiverService : Service() {
         const val ACTION_START = "com.example.rabit.airplay.START"
         const val ACTION_STOP = "com.example.rabit.airplay.STOP"
         const val ACTION_TEST_TONE = "com.example.rabit.airplay.TEST_TONE"
+        private const val PREFERRED_RAOP_PORT = 7000
         private const val CHANNEL_ID = "rabit_airplay_receiver"
         private const val NOTIFICATION_ID = 77
     }

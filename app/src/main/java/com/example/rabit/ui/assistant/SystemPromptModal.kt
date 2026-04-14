@@ -54,7 +54,7 @@ fun SystemPromptModal(
                     Icon(
                         Icons.Default.AutoAwesome,
                         contentDescription = null,
-                        tint = AiViolet,
+                        tint = AccentBlue,
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
@@ -74,7 +74,7 @@ fun SystemPromptModal(
             Spacer(modifier = Modifier.height(16.dp))
             
             Text(
-                "Define how Rabit should behave, its tone, and any specific constraints for all future responses.",
+                "Define how Hackie should behave, its tone, and any specific constraints for all future responses.",
                 color = Silver.copy(alpha = 0.6f),
                 fontSize = 13.sp,
                 lineHeight = 18.sp
@@ -105,7 +105,7 @@ fun SystemPromptModal(
                         unfocusedContainerColor = Color.Transparent,
                         focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = AiViolet,
+                        cursorColor = AccentBlue,
                         focusedTextColor = Platinum,
                         unfocusedTextColor = Platinum
                     )
@@ -121,7 +121,7 @@ fun SystemPromptModal(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AiViolet)
+                colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
             ) {
                 Row(
                     horizontalArrangement = Arrangement.Center,

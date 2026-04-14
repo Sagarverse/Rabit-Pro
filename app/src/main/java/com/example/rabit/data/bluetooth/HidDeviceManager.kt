@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.os.Parcelable
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -39,9 +40,6 @@ class HidDeviceManager private constructor(private val context: Context) {
     private var pendingBondAddress: String? = null
     private var pendingConnectRetries: Int = 3
     private var pendingRetryDelayMs: Long = 1500
-    private val reconnectInitialDelayMs = 1000L
-    private val reconnectMaxDelayMs = 12000L
-    private val reconnectAttemptsPerCycle = 8
 
     private data class ReportRequest(val id: Int, val data: ByteArray)
     private val reportChannel = Channel<ReportRequest>(Channel.UNLIMITED)
@@ -49,6 +47,9 @@ class HidDeviceManager private constructor(private val context: Context) {
     var typingDelay = 120L 
     private var currentModifiers: Byte = 0
     private var textPushJob: Job? = null
+    private val consumerKeyLock = Any()
+    private var lastConsumerUsageId: Short = 0
+    private var lastConsumerSentAtMs: Long = 0L
 
     private val _isPushPaused = MutableStateFlow(false)
     val isPushPaused: StateFlow<Boolean> = _isPushPaused.asStateFlow()
@@ -139,7 +140,6 @@ class HidDeviceManager private constructor(private val context: Context) {
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     connectedDevice = null
                     _connectionState.value = ConnectionState.Disconnected
-                    if (!isManuallyDisconnected) startReconnectLoop(device)
                 }
             }
         }
@@ -195,30 +195,6 @@ class HidDeviceManager private constructor(private val context: Context) {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         context.startActivity(intent)
-    }
-
-    private fun startReconnectLoop(device: BluetoothDevice?) {
-        if (device == null || isManuallyDisconnected || bluetoothAdapter?.isEnabled != true) return
-        reconnectJob?.cancel()
-        reconnectJob = scope.launch {
-            var delayMs = reconnectInitialDelayMs
-            var attemptsInCycle = 0
-
-            while (isActive && _connectionState.value is ConnectionState.Disconnected && (bluetoothAdapter?.isEnabled == true)) {
-                attemptsInCycle += 1
-                hidDevice?.connect(device)
-
-                if (attemptsInCycle >= reconnectAttemptsPerCycle) {
-                    // Cool down after a burst of retries to avoid connection flapping.
-                    attemptsInCycle = 0
-                    delayMs = reconnectInitialDelayMs
-                    delay(5000)
-                } else {
-                    delay(delayMs)
-                    delayMs = (delayMs * 2).coerceAtMost(reconnectMaxDelayMs)
-                }
-            }
-        }
     }
 
     fun connect(device: BluetoothDevice) {
@@ -370,14 +346,29 @@ class HidDeviceManager private constructor(private val context: Context) {
     }
 
     fun sendConsumerKey(usageId: Short) {
-        val report = ByteArray(2).apply {
+        val now = SystemClock.elapsedRealtime()
+        val shouldDrop = synchronized(consumerKeyLock) {
+            val duplicateTooFast = usageId == lastConsumerUsageId && (now - lastConsumerSentAtMs) < 180L
+            if (!duplicateTooFast) {
+                lastConsumerUsageId = usageId
+                lastConsumerSentAtMs = now
+            }
+            duplicateTooFast
+        }
+        if (shouldDrop) return
+
+        val pressReport = ByteArray(2).apply {
             this[0] = (usageId.toInt() and 0xFF).toByte()
             this[1] = ((usageId.toInt() shr 8) and 0xFF).toByte()
         }
-        reportChannel.trySend(ReportRequest(2, report))
-        scope.launch { 
-            delay(50)
-            reportChannel.trySend(ReportRequest(2, ByteArray(2))) 
+
+        // Defensive sequence for host stability: release -> press -> release.
+        reportChannel.trySend(ReportRequest(2, ByteArray(2)))
+        scope.launch {
+            delay(8)
+            reportChannel.trySend(ReportRequest(2, pressReport))
+            delay(22)
+            reportChannel.trySend(ReportRequest(2, ByteArray(2)))
         }
     }
 

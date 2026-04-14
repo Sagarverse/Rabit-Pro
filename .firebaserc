@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "rabit-260412-183123"
+    "default": "hackie-260414-01",
+    "legacy-rabit": "rabit-260412-183123"
   }
 }

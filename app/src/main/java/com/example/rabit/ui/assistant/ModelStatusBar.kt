@@ -33,13 +33,13 @@ fun LocalModelStatusBar(
     ) {
         Surface(
             color = if (state == com.example.rabit.data.gemini.ModelLoadState.ERROR)
-                ErrorRed.copy(alpha = 0.06f) else Graphite.copy(alpha = 0.5f),
+                AccentBlue.copy(alpha = 0.08f) else Graphite.copy(alpha = 0.5f),
             shadowElevation = 0.dp,
             modifier = Modifier.fillMaxWidth(),
             border = BorderStroke(
                 0.5.dp,
                 if (state == com.example.rabit.data.gemini.ModelLoadState.ERROR)
-                    ErrorRed.copy(alpha = 0.2f) else BorderColor.copy(alpha = 0.1f)
+                    AccentBlue.copy(alpha = 0.25f) else BorderColor.copy(alpha = 0.1f)
             )
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -68,13 +68,13 @@ fun LocalModelStatusBar(
                             Icon(
                                 imageVector = if (isNetworkError) Icons.Default.WifiOff else Icons.Default.ErrorOutline, 
                                 contentDescription = null, 
-                                tint = ErrorRed, 
+                                tint = AccentBlue, 
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
                                 if (isNetworkError) "Network Connectivity Issue" else "Model Engine Failure", 
-                                color = ErrorRed, 
+                                color = AccentBlue, 
                                 fontSize = 13.sp, 
                                 fontWeight = FontWeight.Bold
                             )
@@ -108,7 +108,7 @@ fun LocalModelStatusBar(
                 if (state == com.example.rabit.data.gemini.ModelLoadState.ERROR && error != null) {
                     Text(
                         text = error,
-                        color = ErrorRed.copy(alpha = 0.8f),
+                        color = AccentBlue.copy(alpha = 0.9f),
                         fontSize = 11.sp,
                         lineHeight = 16.sp
                     )

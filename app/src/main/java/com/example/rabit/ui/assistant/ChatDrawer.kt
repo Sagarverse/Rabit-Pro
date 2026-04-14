@@ -85,7 +85,7 @@ fun AssistantDrawerContent(
         )
         Spacer(modifier = Modifier.height(12.dp))
         Column(modifier = Modifier.padding(horizontal = 8.dp)) {
-            DrawerItem(Icons.Default.AutoAwesome, "Macro Genie", AccentGold, onClick = onMacroGenieClick)
+            DrawerItem(Icons.Default.AutoAwesome, "Macro Genie", AccentBlue, onClick = onMacroGenieClick)
             DrawerItem(Icons.AutoMirrored.Filled.LibraryBooks, "Prompt Library", Silver, onClick = onPromptLibraryClick)
             DrawerItem(Icons.Default.Memory, "Hardware Monitor", Silver, onClick = onHardwareMonitorClick)
         }
@@ -159,7 +159,7 @@ fun AssistantDrawerContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
-                            Brush.horizontalGradient(listOf(AiViolet, AiIndigo)),
+                            Brush.horizontalGradient(listOf(AccentBlue, AccentBlue.copy(alpha = 0.7f))),
                             RoundedCornerShape(14.dp)
                         )
                         .padding(vertical = 14.dp),
@@ -212,7 +212,7 @@ fun ChatHistorySection(
                 val isSelected = session.id == currentId
                 Surface(
                     onClick = { onSessionSelect(session.id) },
-                    color = if (isSelected) AiViolet.copy(alpha = 0.1f) else Color.Transparent,
+                    color = if (isSelected) AccentBlue.copy(alpha = 0.1f) else Color.Transparent,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -225,7 +225,7 @@ fun ChatHistorySection(
                         Icon(
                             if (isSelected) Icons.Default.ChatBubble else Icons.Default.ChatBubbleOutline,
                             contentDescription = null,
-                            tint = if (isSelected) AiViolet else Silver.copy(alpha = 0.3f),
+                            tint = if (isSelected) AccentBlue else Silver.copy(alpha = 0.3f),
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
@@ -251,7 +251,7 @@ fun ChatHistorySection(
                             Icon(
                                 Icons.Default.DeleteOutline, 
                                 contentDescription = "Delete", 
-                                tint = if (isSelected) ErrorRed.copy(alpha = 0.8f) else Silver.copy(alpha = 0.2f), 
+                                tint = if (isSelected) AccentBlue.copy(alpha = 0.8f) else Silver.copy(alpha = 0.2f), 
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -310,12 +310,12 @@ fun ModelManagerSection(
 
             Surface(
                 onClick = { if (isDownloaded) onSelect(model) },
-                color = if (isActive) AiViolet.copy(alpha = 0.1f) else Color.Transparent,
+                color = if (isActive) AccentBlue.copy(alpha = 0.1f) else Color.Transparent,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 4.dp),
-                border = if (isActive) BorderStroke(0.5.dp, AiViolet.copy(alpha = 0.3f)) else null
+                border = if (isActive) BorderStroke(0.5.dp, AccentBlue.copy(alpha = 0.3f)) else null
             ) {
                 Row(
                     modifier = Modifier.padding(12.dp),
@@ -325,7 +325,7 @@ fun ModelManagerSection(
                         modifier = Modifier
                             .size(36.dp)
                             .background(
-                                if (isActive) AiViolet.copy(alpha = 0.2f) else SoftGrey.copy(alpha = 0.1f),
+                                if (isActive) AccentBlue.copy(alpha = 0.2f) else SoftGrey.copy(alpha = 0.1f),
                                 RoundedCornerShape(10.dp)
                             ),
                         contentAlignment = Alignment.Center
@@ -333,7 +333,7 @@ fun ModelManagerSection(
                         Icon(
                             if (model.isGpu) Icons.Default.Bolt else Icons.Default.SmartToy,
                             contentDescription = null,
-                            tint = if (isActive) AiViolet else Silver.copy(alpha = 0.4f),
+                            tint = if (isActive) AccentBlue else Silver.copy(alpha = 0.4f),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -371,7 +371,7 @@ fun ModelManagerSection(
                                 }, 
                                 modifier = Modifier.size(32.dp)
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Get Model", tint = AiViolet, modifier = Modifier.size(20.dp))
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Get Model", tint = AccentBlue, modifier = Modifier.size(20.dp))
                             }
                         }
                     } else if (isActive) {

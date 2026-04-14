@@ -99,7 +99,7 @@
             android:name="com.example.rabit.data.network.HandoffActivity"
             android:exported="true"
             android:theme="@android:style/Theme.NoDisplay"
-            android:label="Send to Mac">
+            android:label="Send to Hackie">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -110,7 +110,7 @@
         <!-- Feature 4: Quick Settings Tile for one-tap connect/disconnect -->
         <service
             android:name="com.example.rabit.data.bluetooth.RabitQsTile"
-            android:label="Rabit Pro"
+            android:label="Hackie"
             android:icon="@android:drawable/stat_sys_data_bluetooth"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             android:exported="true">

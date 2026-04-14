@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
  * HandoffActivity - Feature 3: Screen Handoff
  *
  * This transparent Activity registers as a Share target for URLs.
- * When the user taps "Share > Rabit" in Chrome or any other browser,
+ * When the user taps "Share > Hackie" in Chrome or any other browser,
  * Android invokes this Activity with the URL as an Intent extra.
  *
  * The Activity then:
@@ -52,7 +52,7 @@ class HandoffActivity : Activity() {
         }
 
         if (url.isNullOrBlank()) {
-            Toast.makeText(this, "Rabit: Nothing to hand off.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Hackie: Nothing to hand off.", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -62,7 +62,7 @@ class HandoffActivity : Activity() {
     }
 
     /**
-     * Use Android NSD (Network Service Discovery) to find the Mac's Rabit companion
+    * Use Android NSD (Network Service Discovery) to find the Mac's Hackie companion
      * server on the local network, then POST the URL to it.
      */
     private fun discoverAndSend(url: String) {
@@ -75,7 +75,7 @@ class HandoffActivity : Activity() {
                 if (!resolved) {
                     resolved = true
                     runOnUiThread {
-                        Toast.makeText(this@HandoffActivity, "Rabit: Could not reach Mac server.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@HandoffActivity, "Hackie: Could not reach Mac server.", Toast.LENGTH_SHORT).show()
                         finish()
                     }
                 }
@@ -117,7 +117,7 @@ class HandoffActivity : Activity() {
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
                 Log.e("HandoffActivity", "NSD start failed: $errorCode")
                 runOnUiThread {
-                    Toast.makeText(this@HandoffActivity, "Rabit: Network discovery failed.", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@HandoffActivity, "Hackie: Network discovery failed.", Toast.LENGTH_SHORT).show()
                     finish()
                 }
             }
@@ -129,7 +129,7 @@ class HandoffActivity : Activity() {
             nsdManager.discoverServices("_rabit._tcp.", NsdManager.PROTOCOL_DNS_SD, discoveryListener)
         } catch (e: Exception) {
             Log.e("HandoffActivity", "Failed to start NSD", e)
-            Toast.makeText(this, "Rabit: Discovery error.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Hackie: Discovery error.", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -139,13 +139,21 @@ class HandoffActivity : Activity() {
             delay(4000)
             if (!resolved) {
                 resolved = true
-                try { nsdManager.stopServiceDiscovery(discoveryListener) } catch (_: Exception) {}
+                try {
+                    nsdManager.stopServiceDiscovery(discoveryListener)
+                } catch (e: Exception) {
+                    Log.w("HandoffActivity", "Failed stopping NSD discovery on timeout", e)
+                }
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@HandoffActivity, "Rabit: Mac not found on network. Ensure Rabit Mac companion is running.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@HandoffActivity, "Hackie: Mac not found on network. Ensure Hackie Mac companion is running.", Toast.LENGTH_LONG).show()
                     finish()
                 }
             } else {
-                try { nsdManager.stopServiceDiscovery(discoveryListener) } catch (_: Exception) {}
+                try {
+                    nsdManager.stopServiceDiscovery(discoveryListener)
+                } catch (e: Exception) {
+                    Log.w("HandoffActivity", "Failed stopping NSD discovery after resolve", e)
+                }
             }
         }
     }
@@ -153,7 +161,7 @@ class HandoffActivity : Activity() {
     private fun sendToMac(url: String, host: String, port: Int) {
         if (host.isBlank()) {
             runOnUiThread {
-                Toast.makeText(this, "Rabit: Invalid Mac address.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Hackie: Invalid Mac address.", Toast.LENGTH_SHORT).show()
                 finish()
             }
             return
@@ -170,7 +178,7 @@ class HandoffActivity : Activity() {
                 Toast.makeText(this@HandoffActivity, "✅ Opened on Mac!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("HandoffActivity", "Handoff failed: ${e.message}")
-                Toast.makeText(this@HandoffActivity, "Rabit: Could not reach Mac.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@HandoffActivity, "Hackie: Could not reach Mac.", Toast.LENGTH_SHORT).show()
             } finally {
                 finish()
             }

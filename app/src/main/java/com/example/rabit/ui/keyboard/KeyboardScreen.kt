@@ -1,6 +1,7 @@
 package com.example.rabit.ui.keyboard
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -43,15 +44,25 @@ fun KeyboardScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToAssistant: () -> Unit,
     onNavigateToSnippets: () -> Unit = {},
-    onNavigateToShortcuts: () -> Unit = {},
+    onNavigateToAutomation: () -> Unit = {},
     onNavigateToWebBridge: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableStateOf(0) }
     val connectionState by viewModel.connectionState.collectAsState()
+    var wasConnected by remember { mutableStateOf(false) }
 
     LaunchedEffect(connectionState) {
-        if (connectionState is HidDeviceManager.ConnectionState.Disconnected) {
-            onDisconnect()
+        when (connectionState) {
+            is HidDeviceManager.ConnectionState.Connected -> {
+                wasConnected = true
+            }
+            is HidDeviceManager.ConnectionState.Disconnected -> {
+                if (wasConnected) {
+                    wasConnected = false
+                    onDisconnect()
+                }
+            }
+            else -> Unit
         }
     }
 
@@ -124,14 +135,14 @@ fun KeyboardScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         // Dynamic Module Container
         Box(modifier = Modifier.weight(1f)) {
             when (selectedTab) {
                 0 -> DualKeyboardTab(viewModel)
                 1 -> TrackpadSection(viewModel)
-                2 -> FileHubSection(viewModel, onNavigateToSnippets, onNavigateToShortcuts, onNavigateToWebBridge)
+                2 -> FileHubSection(viewModel, onNavigateToSnippets, onNavigateToAutomation, onNavigateToWebBridge)
             }
         }
         
@@ -156,13 +167,20 @@ fun PremiumHeader(
     ) {
         Column {
             Text(
-                "INFRASTRUCTURE",
+                "CONTROL DECK",
                 color = Platinum,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Light,
                 letterSpacing = 4.sp
             )
             Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                "Hi pookie, I am Hackie. Let's cause productive chaos.",
+                color = AccentBlue,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier

@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.ListenerRegistration
 
@@ -39,16 +38,22 @@ class WebRtcManager(private val context: Context) {
     private val firestore = FirebaseFirestore.getInstance()
     private var signalingListener: ListenerRegistration? = null
     private val processedRemoteCandidates = mutableSetOf<String>()
+        private var signalingDocId: String? = null
+        private var signalingReconnectJob: Job? = null
 
     fun start() {
-        if (_peerId.value != null) return
+            if (_peerId.value != null || peerConnection != null || signalingListener != null) {
+                stop()
+            }
         
         val uniqueId = UUID.randomUUID().toString().take(6).uppercase()
         _peerId.value = uniqueId
+            signalingDocId = uniqueId
+            _connectionStatus.value = "Initializing signaling"
 
         initializeWebRtc()
         setupFirestoreSignaling(uniqueId)
-        _connectionStatus.value = "Awaiting Peer"
+            _connectionStatus.value = "Waiting for web offer"
     }
 
     private fun initializeWebRtc() {
@@ -85,7 +90,15 @@ class WebRtcManager(private val context: Context) {
             }
 
             override fun onIceConnectionChange(newState: PeerConnection.IceConnectionState) {
-                _connectionStatus.value = newState.name
+                _connectionStatus.value = when (newState) {
+                    PeerConnection.IceConnectionState.CONNECTED,
+                    PeerConnection.IceConnectionState.COMPLETED -> "P2P Connected"
+                    PeerConnection.IceConnectionState.CHECKING -> "Negotiating ICE"
+                    PeerConnection.IceConnectionState.DISCONNECTED -> "Peer disconnected"
+                    PeerConnection.IceConnectionState.FAILED -> "ICE failed"
+                    PeerConnection.IceConnectionState.CLOSED -> "P2P closed"
+                    PeerConnection.IceConnectionState.NEW -> "Waiting for ICE"
+                }
                 Log.d(TAG, "ICE Connection State: $newState")
             }
 
@@ -113,6 +126,8 @@ class WebRtcManager(private val context: Context) {
                 Log.d(TAG, "DataChannel State: ${dc.state()}")
                 if (dc.state() == DataChannel.State.OPEN) {
                     _connectionStatus.value = "P2P Connected"
+                } else if (dc.state() == DataChannel.State.CONNECTING) {
+                    _connectionStatus.value = "Data channel opening"
                 }
             }
 
@@ -156,19 +171,28 @@ class WebRtcManager(private val context: Context) {
                 "updatedAt" to System.currentTimeMillis()
             ),
             SetOptions.merge()
-        )
+        ).addOnFailureListener {
+            Log.e(TAG, "Failed to reset signaling doc", it)
+            _connectionStatus.value = "Signaling write failed"
+        }
 
-        signalingListener = signalRef.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, e ->
+        _connectionStatus.value = "Listening for offers"
+
+        signalingListener?.remove()
+        signalingReconnectJob?.cancel()
+
+        signalingListener = signalRef.addSnapshotListener { snapshot, e ->
             if (e != null) {
                 Log.e(TAG, "Signaling Listen failed", e)
-                _connectionStatus.value = "Signaling Offline"
+                _connectionStatus.value = "Signaling reconnecting"
+                scheduleSignalingReconnect(id)
                 return@addSnapshotListener
             }
 
             if (snapshot != null && snapshot.exists()) {
                 val data = snapshot.data ?: return@addSnapshotListener
-                
-                // Web Bridge will send 'offer' or 'answer'
+
+                // Web Bridge writes offer; Android answers.
                 val offer = data["web_offer"] as? String
                 val answer = data["web_answer"] as? String
                 val candidates = (data["web_candidates"] as? List<*>)
@@ -176,18 +200,28 @@ class WebRtcManager(private val context: Context) {
                     ?: emptyList()
 
                 if (offer != null && peerConnection?.remoteDescription == null) {
+                    _connectionStatus.value = "Offer received"
                     handleOffer(offer)
                 } else if (answer != null && peerConnection?.remoteDescription == null) {
+                    _connectionStatus.value = "Answer received"
                     handleAnswer(answer)
                 }
 
-                // Handle accumulated candidates
                 candidates.forEach { candStr ->
                     if (processedRemoteCandidates.add(candStr)) {
                         handleRemoteCandidateString(candStr)
                     }
                 }
             }
+        }
+    }
+
+    private fun scheduleSignalingReconnect(id: String) {
+        signalingReconnectJob?.cancel()
+        signalingReconnectJob = scope.launch {
+            delay(1200)
+            if (_peerId.value != id) return@launch
+            setupFirestoreSignaling(id)
         }
     }
 
@@ -231,6 +265,8 @@ class WebRtcManager(private val context: Context) {
                                     SetOptions.merge()
                                 ).addOnFailureListener {
                                     Log.e(TAG, "Failed to upload answer SDP", it)
+                                }.addOnSuccessListener {
+                                    _connectionStatus.value = "Answer sent"
                                 }
                             }
                             override fun onCreateFailure(p0: String?) {}
@@ -277,14 +313,17 @@ class WebRtcManager(private val context: Context) {
 
     fun stop() {
         signalingListener?.remove()
+        signalingReconnectJob?.cancel()
         dataChannel?.close()
         peerConnection?.close()
         pcf?.dispose()
 
         signalingListener = null
+        signalingReconnectJob = null
         dataChannel = null
         peerConnection = null
         pcf = null
+        signalingDocId = null
         processedRemoteCandidates.clear()
         
         _peerId.value = null

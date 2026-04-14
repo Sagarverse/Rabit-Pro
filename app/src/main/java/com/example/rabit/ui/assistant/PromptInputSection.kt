@@ -1,7 +1,9 @@
 package com.example.rabit.ui.assistant
 
 import android.net.Uri
+import android.util.Log
 import android.util.Base64
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -66,7 +68,7 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
     // Send button animation
     val sendButtonScale by animateFloatAsState(
         targetValue = if (input.isNotBlank() && !isLoading) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 500f),
+        animationSpec = spring(dampingRatio = AssistantMotion.SPRING_ENTRY_DAMPING, stiffness = 420f),
         label = "sendScale"
     )
 
@@ -85,9 +87,14 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                         val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
                         newList.add(uri to base64)
                     }
-                } catch (e: Exception) {}
+                } catch (e: Exception) {
+                    Log.e("PromptInputSection", "Failed to read selected image: $uri", e)
+                }
             }
             if (newList.isNotEmpty()) viewModel.attachImages(newList)
+            if (uris.isNotEmpty() && newList.isEmpty()) {
+                Toast.makeText(context, "Could not attach selected image(s)", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -104,7 +111,10 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                     val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
                     viewModel.attachImages(listOf(cameraUri!! to base64))
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                Log.e("PromptInputSection", "Failed to process captured image", e)
+                Toast.makeText(context, "Could not attach captured image", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -123,7 +133,10 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                 val content = inputStream?.bufferedReader()?.readText() ?: ""
                 inputStream?.close()
                 viewModel.attachFile(fileName, content)
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                Log.e("PromptInputSection", "Failed to attach file: $uri", e)
+                Toast.makeText(context, "Could not attach one of the selected files", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -138,8 +151,8 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
 
     // Animated border color for focus
     val borderColor by animateColorAsState(
-        targetValue = if (isFocused) AiViolet.copy(alpha = 0.35f) else BorderColor.copy(alpha = 0.12f),
-        animationSpec = tween(300),
+        targetValue = if (isFocused) AccentBlue.copy(alpha = 0.35f) else BorderColor.copy(alpha = 0.12f),
+        animationSpec = tween(AssistantMotion.COLOR_TWEEN),
         label = "borderColor"
     )
 
@@ -151,8 +164,8 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
         // ── Slash Command Menu ──
         AnimatedVisibility(
             visible = showCommands,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(AssistantMotion.PANEL_ENTER, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(AssistantMotion.PANEL_FADE_IN)),
+            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(AssistantMotion.PANEL_EXIT, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(AssistantMotion.PANEL_FADE_OUT)),
             modifier = Modifier.padding(bottom = 8.dp)
         ) {
             Surface(
@@ -178,7 +191,24 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                         },
                         Triple(Icons.Default.AutoAwesome, "/system") { showSystemModal = true; viewModel.onInputChanged("") },
                         Triple(Icons.Default.Download, "/download") { viewModel.downloadModel(); viewModel.onInputChanged("") },
-                        Triple(Icons.AutoMirrored.Filled.Help, "/help") { /* Add help logic */ viewModel.onInputChanged("") },
+                        Triple(Icons.AutoMirrored.Filled.Help, "/help") {
+                            viewModel.onInputChanged(
+                                """
+                                Assistant Quick Help
+
+                                Commands:
+                                /solve - Capture a problem and generate code-only output.
+                                /system - Edit the assistant's system prompt.
+                                /download - Download selected local model.
+                                /clear - Clear current conversation.
+
+                                Tips:
+                                - Use the right tools panel to access Prompt Library, Hardware Monitor, and Macro Genie.
+                                - Attach images/documents with the + button for multimodal prompts.
+                                - Enable AUTO PUSH TO MAC to auto-send AI replies to your Mac.
+                                """.trimIndent()
+                            )
+                        },
                         Triple(Icons.Default.DeleteSweep, "/clear") { viewModel.clearMessages(); viewModel.onInputChanged("") }
                     )
                     
@@ -193,7 +223,7 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(icon, contentDescription = null, tint = AiViolet, modifier = Modifier.size(18.dp))
+                                Icon(icon, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(cmd, color = Platinum, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             }
@@ -215,8 +245,8 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                 // Attached Media Toolbar
                 AnimatedVisibility(
                     visible = attachedImages.isNotEmpty(),
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
+                    enter = expandVertically(animationSpec = tween(AssistantMotion.PANEL_ENTER)) + fadeIn(animationSpec = tween(AssistantMotion.PANEL_FADE_IN)),
+                    exit = shrinkVertically(animationSpec = tween(AssistantMotion.PANEL_EXIT)) + fadeOut(animationSpec = tween(AssistantMotion.PANEL_FADE_OUT))
                 ) {
                     LazyRow(
                         modifier = Modifier
@@ -248,7 +278,7 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                                         .offset(x = 6.dp, y = (-6).dp)
                                         .size(20.dp),
                                     shape = CircleShape,
-                                    color = ErrorRed.copy(alpha = 0.9f)
+                                    color = AccentBlue.copy(alpha = 0.9f)
                                 ) {
                                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                                         Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(12.dp))
@@ -288,7 +318,7 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                         modifier = Modifier.weight(1f),
                         placeholder = {
                             Text(
-                                "Message Rabit AI…",
+                                "Message Hackie AI…",
                                 color = Silver.copy(alpha = 0.35f),
                                 fontSize = 15.sp
                             )
@@ -321,7 +351,7 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                                 modifier = Modifier
                                     .graphicsLayer(scaleX = sendButtonScale, scaleY = sendButtonScale)
                                     .background(
-                                        Brush.linearGradient(listOf(AccentBlue, AiViolet)),
+                                        Brush.linearGradient(listOf(AccentBlue, AccentBlue.copy(alpha = 0.7f))),
                                         CircleShape
                                     )
                                     .size(38.dp)
@@ -329,7 +359,7 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                                 Icon(
                                     Icons.Default.ArrowUpward,
                                     contentDescription = "Send",
-                                    tint = if (com.example.rabit.ui.theme.AppThemeMode.isMonochrome) Color.Black else Color.White,
+                                    tint = Color.Black,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -368,8 +398,8 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                 // Character count (subtle, when typing)
                 AnimatedVisibility(
                     visible = input.length > 100,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
+                    enter = fadeIn(animationSpec = tween(AssistantMotion.PANEL_FADE_IN)) + expandVertically(animationSpec = tween(AssistantMotion.PANEL_ENTER)),
+                    exit = fadeOut(animationSpec = tween(AssistantMotion.PANEL_FADE_OUT)) + shrinkVertically(animationSpec = tween(AssistantMotion.PANEL_EXIT))
                 ) {
                     Row(
                         modifier = Modifier
@@ -379,7 +409,7 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                     ) {
                         Text(
                             "${input.length}/$maxChars",
-                            color = if (input.length > maxChars - 200) WarningYellow.copy(alpha = 0.6f)
+                            color = if (input.length > maxChars - 200) AccentBlue.copy(alpha = 0.65f)
                             else Silver.copy(alpha = 0.25f),
                             fontSize = 10.sp
                         )
@@ -393,6 +423,7 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
             ModalBottomSheet(
                 onDismissRequest = { showAttachmentSheet = false },
                 containerColor = ChatSurface,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
                 dragHandle = {
                     Box(
                         modifier = Modifier
@@ -408,13 +439,30 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                         .fillMaxWidth()
                         .padding(bottom = 32.dp, start = 20.dp, end = 20.dp)
                 ) {
-                    Text(
-                        "Attach Content",
-                        color = Platinum,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 20.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 20.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                "Attach Content",
+                                color = Platinum,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "Share image or document context",
+                                color = Silver.copy(alpha = 0.55f),
+                                fontSize = 12.sp
+                            )
+                        }
+                        IconButton(onClick = { showAttachmentSheet = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close attachments", tint = Silver)
+                        }
+                    }
 
                     AttachmentOption(
                         icon = Icons.Default.CameraAlt,
@@ -444,7 +492,7 @@ fun PromptInputSection(viewModel: AssistantViewModel) {
                         icon = Icons.AutoMirrored.Filled.InsertDriveFile,
                         label = "Documents",
                         description = "Attach text files",
-                        iconColor = AccentPurple,
+                        iconColor = AccentBlue,
                         onClick = {
                             showAttachmentSheet = false
                             filePickerLauncher.launch(arrayOf("*/*"))
@@ -470,8 +518,9 @@ private fun AttachmentOption(
 ) {
     Surface(
         onClick = onClick,
-        color = Color.Transparent,
+        color = Graphite.copy(alpha = 0.4f),
         shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.32f)),
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)

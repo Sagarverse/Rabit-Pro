@@ -3,436 +3,395 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rabit Usage Guide - Step by Step</title>
+    <title>Hackie Protocol Manual - Step by Step</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #08111a;
-            --bg-alt: #0f1d2a;
-            --card: #132636;
-            --line: #28465f;
-            --text: #e7f2ff;
-            --muted: #9ec2df;
-            --accent: #19b3a6;
-            --accent-2: #63d3ff;
-            --warn: #ffd166;
+            --bg-primary: #050505;
+            --bg-secondary: #0f0f0f;
+            --bg-card: #161616;
+            --accent: #00f2ff; /* Cyber Cyan */
+            --accent-glow: rgba(0, 242, 255, 0.4);
+            --text-primary: #ffffff;
+            --text-secondary: #b0b0b0;
+            --text-muted: #666666;
+            --border: #222222;
         }
 
-        * { box-sizing: border-box; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            margin: 0;
-            font-family: 'Space Grotesk', sans-serif;
-            color: var(--text);
-            background:
-                radial-gradient(circle at 10% 10%, rgba(25, 179, 166, 0.16), transparent 40%),
-                radial-gradient(circle at 90% 0%, rgba(99, 211, 255, 0.14), transparent 35%),
-                var(--bg);
-            line-height: 1.65;
+            font-family: 'Inter', sans-serif;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
         }
 
         .container {
-            width: min(1080px, calc(100% - 2rem));
+            max-width: 1000px;
             margin: 0 auto;
+            padding: 0 24px;
         }
 
         header {
-            position: sticky;
-            top: 0;
-            z-index: 10;
-            backdrop-filter: blur(8px);
-            background: rgba(8, 17, 26, 0.75);
-            border-bottom: 1px solid var(--line);
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 900px;
+            z-index: 100;
+            padding: 12px 24px;
+            background: rgba(10, 10, 10, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 100px;
         }
 
         .top {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0.85rem 0;
         }
 
         .logo {
-            font-weight: 700;
-            letter-spacing: 0.06em;
-        }
-
-        .logo span { color: var(--accent); }
-
-        .links {
+            font-size: 18px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
             display: flex;
-            gap: 0.9rem;
-            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .logo::before {
+            content: '';
+            width: 10px;
+            height: 10px;
+            background: var(--accent);
+            border-radius: 1px;
+            box-shadow: 0 0 10px var(--accent);
         }
 
-        .links a,
-        .btn {
-            color: var(--text);
+        .links a {
+            color: var(--text-secondary);
             text-decoration: none;
-            border: 1px solid var(--line);
-            padding: 0.5rem 0.8rem;
-            border-radius: 999px;
-            font-size: 0.9rem;
-            transition: 180ms ease;
+            font-size: 13px;
+            font-weight: 500;
+            margin-left: 20px;
+            transition: color 0.2s;
         }
 
-        .links a:hover,
-        .btn:hover {
-            border-color: var(--accent);
-            color: var(--accent-2);
-        }
+        .links a:hover { color: var(--accent); }
 
         .hero {
-            padding: 3.5rem 0 2rem;
+            padding: 180px 0 80px;
+            text-align: center;
         }
 
         h1 {
-            margin: 0 0 0.8rem;
-            font-size: clamp(2rem, 4.8vw, 3.5rem);
-            line-height: 1.1;
+            font-size: clamp(32px, 8vw, 64px);
+            font-weight: 900;
+            letter-spacing: -2px;
+            line-height: 1;
+            margin-bottom: 24px;
+            text-transform: uppercase;
         }
 
         .subtitle {
-            margin: 0;
-            color: var(--muted);
-            max-width: 760px;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto;
+            font-size: 18px;
         }
 
         .badges {
             display: flex;
-            gap: 0.6rem;
-            margin-top: 1.2rem;
-            flex-wrap: wrap;
+            justify-content: center;
+            gap: 12px;
+            margin-top: 32px;
         }
 
         .badge {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.78rem;
-            border: 1px dashed var(--line);
-            padding: 0.35rem 0.55rem;
-            border-radius: 6px;
-            color: var(--muted);
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--accent);
+            border: 1px solid var(--border);
+            padding: 4px 12px;
+            border-radius: 100px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
         section {
-            padding: 1rem 0 2rem;
+            padding: 80px 0;
+            border-top: 1px solid var(--border);
         }
 
         h2 {
-            font-size: clamp(1.4rem, 3.3vw, 2rem);
-            margin: 2rem 0 1rem;
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 48px;
+            text-transform: uppercase;
         }
 
-        h3 {
-            margin: 0 0 0.35rem;
-            font-size: 1.1rem;
+        .step-list { display: grid; gap: 24px; }
+
+        .step {
+            display: flex;
+            gap: 32px;
+            padding: 40px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .step:hover { border-color: var(--accent); background: var(--bg-card); transform: scale(1.02); }
+
+        .step-num {
+            font-size: 11px;
+            font-weight: 800;
+            color: var(--accent);
+            opacity: 0.5;
+        }
+
+        .step-content h3 {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .step-content p {
+            color: var(--text-secondary);
+            font-size: 14px;
         }
 
         .grid {
             display: grid;
-            gap: 1rem;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
         }
 
         .card {
-            background: linear-gradient(160deg, rgba(19, 38, 54, 0.95), rgba(15, 29, 42, 0.92));
-            border: 1px solid var(--line);
-            border-radius: 14px;
-            padding: 1rem;
+            padding: 32px;
+            border: 1px solid var(--border);
+            background: var(--bg-primary);
         }
 
-        .step-list {
-            display: grid;
-            gap: 0.9rem;
-        }
-
-        .step {
-            border: 1px solid var(--line);
-            border-radius: 14px;
-            padding: 1rem;
-            background: rgba(15, 29, 42, 0.88);
-        }
-
-        .step-num {
-            font-family: 'IBM Plex Mono', monospace;
+        .card h3 {
+            font-size: 18px;
             color: var(--accent);
-            font-size: 0.86rem;
-            margin-bottom: 0.3rem;
+            margin-bottom: 16px;
         }
 
-        ul {
-            margin: 0.45rem 0 0;
-            padding-left: 1rem;
+        ul { list-style: none; margin-top: 12px; }
+        li {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            display: flex;
+            gap: 12px;
+        }
+        li::before { content: '→'; color: var(--accent); }
+
+        pre {
+            background: #000;
+            padding: 24px;
+            border: 1px solid var(--border);
+            color: var(--accent);
+            font-family: monospace;
+            font-size: 13px;
+            margin-top: 16px;
+            overflow-x: auto;
         }
 
         .tip {
-            border-left: 4px solid var(--warn);
-            padding: 0.85rem 1rem;
-            color: var(--muted);
-            background: rgba(255, 209, 102, 0.08);
-            border-radius: 10px;
-            margin-top: 1rem;
+            margin-top: 40px;
+            padding: 24px;
+            background: rgba(0, 242, 255, 0.05);
+            border-left: 2px solid var(--accent);
+            font-size: 14px;
+            color: var(--accent);
         }
 
         footer {
-            margin-top: 1rem;
-            border-top: 1px solid var(--line);
-            padding: 1.2rem 0 2rem;
-            color: var(--muted);
-            font-size: 0.92rem;
+            padding: 60px 0;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-muted);
         }
 
-        @media (max-width: 700px) {
-            .top { align-items: flex-start; gap: 0.8rem; flex-direction: column; }
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+            .step { flex-direction: column; gap: 12px; padding: 24px; }
+            header { display: none; }
+            .hero { padding-top: 100px; }
         }
     </style>
 </head>
 <body>
     <header>
         <div class="container top">
-            <div class="logo">RAB<span>IT</span> GUIDE</div>
+            <div class="logo">HACKIE <span>PROTOCOL</span></div>
             <nav class="links">
                 <a href="index.html">Home</a>
-                <a href="#quickstart">Quick Start</a>
-                <a href="#features">Feature Walkthrough</a>
-                <a href="#troubleshooting">Troubleshooting</a>
-                <a href="https://github.com/Sagarverse/Rabit-Pro/releases" target="_blank" rel="noopener noreferrer">Download APK</a>
+                <a href="#quickstart">Initialization</a>
+                <a href="#features">Modules</a>
+                <a href="#troubleshooting">Diagnostics</a>
+                <a href="https://github.com/Sagarverse/Hackie/releases" target="_blank">Download</a>
             </nav>
         </div>
     </header>
 
     <main class="container">
         <section class="hero">
-            <h1>How To Use Rabit, Step by Step</h1>
-            <p class="subtitle">This guide walks through the full flow: first pairing, keyboard and touchpad usage, AI assistant workflows, URL handoff, automation tools, snippets, shortcuts, and settings customization.</p>
+            <h1>HACKIE PROTOCOL MANUAL</h1>
+            <p class="subtitle">Official technical documentation for the Hackie AI Core. Master the HID injection flow and AI synthesis protocols.</p>
             <div class="badges">
-                <span class="badge">Android Controller</span>
-                <span class="badge">Bluetooth HID</span>
-                <span class="badge">AI Assistant</span>
-                <span class="badge">Mac + Android Targets</span>
+                <span class="badge">HID INJECTOR v2.6</span>
+                <span class="badge">AI SYNTAX ENGINE</span>
+                <span class="badge">SECURE LOCAL VAULT</span>
             </div>
         </section>
 
         <section id="quickstart">
-            <h2>Quick Start</h2>
+            <h2>INITIALIZATION</h2>
             <div class="step-list">
                 <article class="step">
-                    <div class="step-num">STEP 01</div>
-                    <h3>Install and launch</h3>
-                    <p>Install the latest APK, open Rabit, and grant requested permissions for Bluetooth and notifications.</p>
+                    <div class="step-num">PROT_01</div>
+                    <div class="step-content">
+                        <h3>DEPLOY PAYLOAD</h3>
+                        <p>Install the Hackie APK core. Grant mandatory hardware permissions for Bluetooth and HID broadcasting.</p>
+                    </div>
                 </article>
                 <article class="step">
-                    <div class="step-num">STEP 02</div>
-                    <h3>Pair your target device</h3>
-                    <p>From the Pairing screen, select your Mac or Android target and confirm pairing prompts on both devices.</p>
+                    <div class="step-num">PROT_02</div>
+                    <div class="step-content">
+                        <h3>ESTABLISH LINK</h3>
+                        <p>Open Pairing mode. Select your target system (macOS/Android). Verify the secure handshake protocol.</p>
+                    </div>
                 </article>
                 <article class="step">
-                    <div class="step-num">STEP 03</div>
-                    <h3>Start in Keyboard screen</h3>
-                    <p>After connection, enter the Keyboard module and test typing, modifiers, enter, and media keys.</p>
+                    <div class="step-num">PROT_03</div>
+                    <div class="step-content">
+                        <h3>VERIFY INPUT</h3>
+                        <p>Access the Control Deck terminal. Test standard HID keycodes and modifier locks before script execution.</p>
+                    </div>
                 </article>
             </div>
-            <div class="tip">Tip: if connection drops, return to Pairing and reconnect before testing advanced modules like automation or assistant typing.</div>
+            <div class="tip">DIAGNOSTIC: If the link is severed, re-initiate PROT_02 from the Pairing module.</div>
         </section>
 
         <section id="features">
-            <h2>Detailed Feature Walkthrough</h2>
+            <h2>SYSTEM MODULES</h2>
             <div class="grid">
                 <article class="card">
-                    <h3>Keyboard + Modifiers</h3>
-                    <p>Use the INPUT tab for standard keyboard entry.</p>
+                    <h3>CONTROL DECK</h3>
                     <ul>
-                        <li>Toggle modifier keys (Cmd, Ctrl, Shift, Alt) then press target keys.</li>
-                        <li>Use system keys for navigation and app switching.</li>
-                        <li>Use batch typing to send longer text quickly.</li>
+                        <li>Hardware-level modifier locking (Cmd, Option).</li>
+                        <li>High-frequency batch character streaming.</li>
+                        <li>Global media keys for system-level control.</li>
                     </ul>
                 </article>
                 <article class="card">
-                    <h3>Touchpad (PAD Tab)</h3>
-                    <p>Use your phone as a pointer device.</p>
+                    <h3>AI SYNAPSE</h3>
                     <ul>
-                        <li>Single tap for click, two-finger for scroll.</li>
-                        <li>Use motion/air-mouse features if enabled in settings.</li>
-                        <li>Disable PAD mode when done to save battery.</li>
+                        <li>Gemini 1.5 Pro HID bridge.</li>
+                        <li>Automated synthesis-to-keyboard injection.</li>
+                        <li>Context-aware prompt refinement headers.</li>
                     </ul>
                 </article>
                 <article class="card">
-                    <h3>Assistant (AI)</h3>
-                    <p>Open Assistant to generate or refine text.</p>
+                    <h3>QUANTUM PAD</h3>
                     <ul>
-                        <li>Ask for rewrites, summaries, or structured drafts.</li>
-                        <li>Use Auto Push to type generated output onto your connected device.</li>
-                        <li>Set response behavior in prompts/system instruction settings.</li>
+                        <li>Multi-touch HID translation protocol.</li>
+                        <li>Zero-latency cursor synchronization.</li>
+                        <li>Independent touchpad lifecycle management.</li>
                     </ul>
                 </article>
                 <article class="card">
-                    <h3>Snippets</h3>
-                    <p>Save frequently used text blocks for one-tap typing.</p>
+                    <h3>SECURE VAULT</h3>
                     <ul>
-                        <li>Create categorized snippets (email, code, replies).</li>
-                        <li>Tap to inject content through HID typing.</li>
-                        <li>Update snippets as reusable templates.</li>
-                    </ul>
-                </article>
-                <article class="card">
-                    <h3>Shortcuts Guide</h3>
-                    <p>Use predefined shortcuts for faster navigation.</p>
-                    <ul>
-                        <li>Review common productivity combinations.</li>
-                        <li>Practice in a text editor before live work.</li>
-                        <li>Use in combination with modifier lock for speed.</li>
-                    </ul>
-                </article>
-                <article class="card">
-                    <h3>URL Handoff</h3>
-                    <p>Share a URL from Android and open it quickly on your connected Mac via keyboard macro flow.</p>
-                    <ul>
-                        <li>Tap Share in mobile browser, choose Rabit Handoff.</li>
-                        <li>Rabit opens browser launcher flow on the target.</li>
-                        <li>URL is typed and submitted automatically.</li>
-                    </ul>
-                </article>
-                <article class="card">
-                    <h3>Automation Module</h3>
-                    <p>Use in-app automation tools for your own devices.</p>
-                    <ul>
-                        <li>Wake-on-LAN screen to wake supported machines.</li>
-                        <li>SSH Terminal screen for authenticated remote commands.</li>
-                        <li>Use only on systems you own or are authorized to manage.</li>
-                    </ul>
-                </article>
-                <article class="card">
-                    <h3>Settings + Customization</h3>
-                    <p>Control feature visibility and personalization.</p>
-                    <ul>
-                        <li>Enable/disable modules from Customization.</li>
-                        <li>Configure profile and AI/API options.</li>
-                        <li>Adjust usability features for your workflow.</li>
+                        <li>AES-256 encrypted local persistence.</li>
+                        <li>Biometric handshake for credential push.</li>
+                        <li>No cloud synchronization - Hardware only.</li>
                     </ul>
                 </article>
             </div>
         </section>
 
         <section id="complex-macros">
-            <h2>How To Create Complex Macros In App</h2>
+            <h2>SCRIPTING ENGINE</h2>
             <div class="step-list">
                 <article class="step">
-                    <div class="step-num">STEP 01</div>
-                    <h3>Open macro editor</h3>
-                    <p>Go to Automation screen, then open USER CUSTOM and tap +.</p>
+                    <div class="step-num">SCRIPT_01</div>
+                    <div class="step-content">
+                        <h3>OPEN COMPILER</h3>
+                        <p>Navigate to Automation -> User Custom. Initialize a new sequence by tapping [+].</p>
+                    </div>
                 </article>
                 <article class="step">
-                    <div class="step-num">STEP 02</div>
-                    <h3>Use script commands</h3>
-                    <p>Write one command per line. Supported commands are <strong>KEY(...)</strong>, <strong>TEXT(...)</strong>, <strong>WAIT(...)</strong>, and <strong>MEDIA(...)</strong>.</p>
-                </article>
-                <article class="step">
-                    <div class="step-num">STEP 03</div>
-                    <h3>Save and run</h3>
-                    <p>Give your macro a name, save it, then tap it from USER CUSTOM to execute the full sequence.</p>
+                    <div class="step-num">SCRIPT_02</div>
+                    <div class="step-content">
+                        <h3>SYNTAX RULES</h3>
+                        <p>Utilize the following primitives: KEY(CODE), TEXT(STRING), WAIT(MS), and MEDIA(CMD).</p>
+                    </div>
                 </article>
             </div>
-            <div class="card" style="margin-top: 12px;">
-                <h3>Example: Spotlight -> Terminal -> whoami</h3>
-                <pre style="white-space: pre-wrap; margin: 0; color: var(--muted); font-family: 'IBM Plex Mono', monospace;">KEY(CMD+SPACE)
+            <div class="card" style="margin-top: 24px;">
+                <h3>SAMPLE: SYSTEM_LAUNCH_SEQ</h3>
+                <pre>KEY(CMD+SPACE)
 WAIT(300)
 TEXT(Terminal)
 KEY(ENTER)
-WAIT(700)
+WAIT(800)
 TEXT(whoami)
 KEY(ENTER)</pre>
             </div>
         </section>
 
-        <section id="media-deck">
-            <h2>Media Control Deck & Now Playing</h2>
-            <div class="step-list">
-                <article class="step">
-                    <div class="step-num">STEP 01</div>
-                    <h3>Open Media Control Deck</h3>
-                    <p>From the app drawer, open Media Control Deck. Use Play/Pause, Volume, Previous, and Next controls to send HID media commands to your Mac.</p>
-                </article>
-                <article class="step">
-                    <div class="step-num">STEP 02</div>
-                    <h3>Connect companion metadata channel</h3>
-                    <p>Run desktop-helper on Mac. It authenticates with bridge PIN and pushes NOW_PLAYING payloads so Rabit displays title, artist, and album live.</p>
-                </article>
-            </div>
-            <div class="card" style="margin-top: 12px;">
-                <h3>NOW_PLAYING JSON payload</h3>
-                <pre style="white-space: pre-wrap; margin: 0; color: var(--muted); font-family: 'IBM Plex Mono', monospace;">{
-  "type": "NOW_PLAYING",
-  "title": "Song Title",
-  "artist": "Artist",
-  "album": "Album",
-  "artworkBase64": "..."
-}</pre>
-            </div>
-        </section>
-
-        <section id="airplay-receiver">
-            <h2>AirPlay Receiver (Wi-Fi)</h2>
-            <div class="step-list">
-                <article class="step">
-                    <div class="step-num">STEP 01</div>
-                    <h3>Open AirPlay Receiver screen</h3>
-                    <p>From drawer, open AirPlay Receiver and enable it.</p>
-                </article>
-                <article class="step">
-                    <div class="step-num">STEP 02</div>
-                    <h3>Select Rabit on Mac</h3>
-                    <p>On macOS Control Center -> Sound, pick Rabit from available outputs on same Wi-Fi.</p>
-                </article>
-            </div>
-            <div class="tip">Current build includes RAOP discovery and foreground receiver lifecycle scaffold. Full ALAC/RAOP decode pipeline requires an embedded RAOP engine/library.</div>
-        </section>
-
         <section id="troubleshooting">
-            <h2>Troubleshooting</h2>
+            <h2>DIAGNOSTICS</h2>
             <div class="step-list">
                 <article class="step">
-                    <div class="step-num">CHECK 01</div>
-                    <h3>Not connecting over Bluetooth</h3>
-                    <p>Verify Bluetooth is enabled on both devices, remove stale pairing records, then pair again from Rabit Pairing screen.</p>
+                    <div class="step-num">ERROR_ALC</div>
+                    <div class="step-content">
+                        <h3>HID BROADCAST FAILURE</h3>
+                        <p>Toggle system Bluetooth. Rebuild the device trust table and re-pair via standard HID stack.</p>
+                    </div>
                 </article>
                 <article class="step">
-                    <div class="step-num">CHECK 02</div>
-                    <h3>No typing on target</h3>
-                    <p>Ensure the target input field is focused and Rabit still shows connected state in the header.</p>
-                </article>
-                <article class="step">
-                    <div class="step-num">CHECK 03</div>
-                    <h3>Assistant response not typing</h3>
-                    <p>Open Assistant settings and verify Auto Push or manual send action is enabled for output transfer.</p>
-                </article>
-            </div>
-        </section>
-
-        <section>
-            <h2>Best Practices</h2>
-            <div class="grid">
-                <article class="card">
-                    <h3>Use trusted devices</h3>
-                    <p>Pair only with your own systems or explicitly approved devices.</p>
-                </article>
-                <article class="card">
-                    <h3>Keep prompts clear</h3>
-                    <p>For AI output, concise instructions improve typing reliability and formatting quality.</p>
-                </article>
-                <article class="card">
-                    <h3>Save reusable flows</h3>
-                    <p>Move repetitive text actions into snippets and shortcuts to reduce manual work.</p>
+                    <div class="step-num">ERROR_LLM</div>
+                    <div class="step-content">
+                        <h3>SYNAPSE TIMEOUT</h3>
+                        <p>Verify API key authorization status. Ensure active uplink for model inference processing.</p>
+                    </div>
                 </article>
             </div>
         </section>
     </main>
 
     <footer>
-        <div class="container">
-            Rabit Usage Guide • Built for practical productivity on Android + Mac workflows.
-        </div>
+        HACKIE PROTOCOL MANUAL &bull; STABLE VERSION v2.6.0 &bull; 2026 ARCHITECTURE
     </footer>
+
+    <script>
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    window.scrollTo({
+                        top: target.offsetTop - 100,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+    </script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Rabit Browser Portal</title>
+  <title>Hackie Browser Portal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -48,18 +48,17 @@
       mask-image: radial-gradient(circle at center, black 45%, transparent 100%);
     }
 
-    .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      backdrop-filter: blur(18px);
-      border-bottom: 1px solid var(--border);
-      background: rgba(7, 16, 38, 0.6);
-      padding: 14px 18px;
+    .quick-actions {
       display: flex;
+      justify-content: flex-end;
       align-items: center;
-      justify-content: space-between;
-      gap: 10px;
+      gap: 8px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .quick-actions .brand {
+      margin-right: auto;
     }
 
     .brand {
@@ -296,23 +295,25 @@
 
   <div id="auth-overlay" class="overlay">
     <div class="auth">
-      <h2 style="margin:0">Rabit Browser Portal</h2>
-      <p class="muted" style="margin-top:8px">Enter the 4-digit PIN shown in your Rabit app.</p>
+      <h2 style="margin:0">Hackie Browser Portal</h2>
+      <p class="muted" style="margin-top:8px">Enter the 4-digit PIN shown in your Hackie app.</p>
       <input id="pin" maxlength="4" inputmode="numeric" autocomplete="one-time-code" type="password" placeholder="0000" />
       <button id="auth-btn">Connect</button>
       <p id="auth-error" style="display:none;color:var(--danger);margin:10px 0 0">Invalid PIN or connection failed.</p>
     </div>
   </div>
 
-  <header class="topbar">
-    <div class="brand"><span class="dot"></span> Rabit Browser Portal</div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button id="refresh-btn" class="chip">Refresh</button>
-      <button id="revoke-btn" class="chip">Disconnect</button>
-    </div>
-  </header>
-
   <main class="container">
+    <section class="card" style="grid-column: 1 / -1;">
+      <div class="body" style="padding:12px 16px;">
+        <div class="quick-actions">
+          <div class="brand"><span class="dot"></span> Hackie Browser Portal</div>
+          <button id="refresh-btn" class="chip">Refresh</button>
+          <button id="revoke-btn" class="chip">Disconnect</button>
+        </div>
+      </div>
+    </section>
+
     <section class="card">
       <div class="card-head">
         <h3 class="title">Upload From Computer</h3>
@@ -358,21 +359,21 @@
     }
 
     function getOrCreateDeviceId() {
-      const saved = localStorage.getItem("rabit_device_id");
+      const saved = localStorage.getItem("hackie_device_id");
       if (saved) return saved;
       const fresh = createDeviceId();
-      localStorage.setItem("rabit_device_id", fresh);
+      localStorage.setItem("hackie_device_id", fresh);
       return fresh;
     }
 
     const state = {
-      token: localStorage.getItem("rabit_session_token") || "",
+      token: localStorage.getItem("hackie_session_token") || "",
       deviceId: getOrCreateDeviceId(),
       tab: "photos",
       library: { photos: [], videos: [], files: [] },
       shared: []
     };
-    localStorage.setItem("rabit_device_id", state.deviceId);
+    localStorage.setItem("hackie_device_id", state.deviceId);
 
     const authOverlay = document.getElementById("auth-overlay");
     const authBtn = document.getElementById("auth-btn");
@@ -408,7 +409,7 @@
       authError.style.display = "none";
       const pin = pinInput.value.replace(/\D/g, "").trim();
       if (pin.length !== 4) {
-        authError.textContent = "Enter the 4-digit PIN shown in Rabit.";
+        authError.textContent = "Enter the 4-digit PIN shown in Hackie.";
         authError.style.color = "var(--danger)";
         authError.style.display = "block";
         return;
@@ -430,7 +431,7 @@
           throw new Error(reason);
         }
         state.token = data.message;
-        localStorage.setItem("rabit_session_token", state.token);
+        localStorage.setItem("hackie_session_token", state.token);
         authError.textContent = "PIN verified. Connecting...";
         authError.style.color = "var(--ok)";
         authError.style.display = "block";
@@ -455,7 +456,7 @@
       const res = await fetch(url, { ...init, headers });
       if (res.status === 401) {
         state.token = "";
-        localStorage.removeItem("rabit_session_token");
+        localStorage.removeItem("hackie_session_token");
         setAuthenticated(false);
         throw new Error("Session expired");
       }
@@ -464,7 +465,7 @@
 
     function renderItems(items, kind) {
       if (!items.length) {
-        list.innerHTML = '<div class="muted">No items found. Grant media/storage permissions in Rabit if needed.</div>';
+        list.innerHTML = '<div class="muted">No items found. Grant media/storage permissions in Hackie if needed.</div>';
         return;
       }
       list.innerHTML = items.map((it) => {

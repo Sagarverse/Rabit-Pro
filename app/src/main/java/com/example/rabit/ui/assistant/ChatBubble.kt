@@ -59,8 +59,8 @@ fun AnimatedMessageEntry(
         visible = visible,
         enter = slideInVertically(
             initialOffsetY = { it / 3 },
-            animationSpec = spring(dampingRatio = 0.7f, stiffness = 200f)
-        ) + fadeIn(animationSpec = tween(400, easing = EaseOutQuart))
+            animationSpec = spring(dampingRatio = AssistantMotion.SPRING_ENTRY_DAMPING, stiffness = AssistantMotion.SPRING_ENTRY_STIFFNESS)
+        ) + fadeIn(animationSpec = tween(AssistantMotion.STAGGER_LONG, easing = EaseOutQuart))
     ) {
         ChatBubble(message, viewModel, mainViewModel)
     }
@@ -98,11 +98,9 @@ fun ChatBubble(message: ChatMessage, viewModel: AssistantViewModel, mainViewMode
                         .size(18.dp)
                         .background(
                             if (isError)
-                                Brush.radialGradient(listOf(ErrorRed, ErrorRed.copy(alpha = 0.7f)))
-                            else if (com.example.rabit.ui.theme.AppThemeMode.isMonochrome)
-                                Brush.linearGradient(listOf(Color.White, Color.White))
+                                Brush.radialGradient(listOf(AccentBlue, AccentBlue.copy(alpha = 0.7f)))
                             else
-                                Brush.radialGradient(listOf(AiViolet, AiIndigo)),
+                                Brush.radialGradient(listOf(AccentBlue, AccentBlue.copy(alpha = 0.7f))),
                             CircleShape
                         ),
                     contentAlignment = Alignment.Center
@@ -116,12 +114,20 @@ fun ChatBubble(message: ChatMessage, viewModel: AssistantViewModel, mainViewMode
                 }
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    if (isError) "Error" else "Rabit AI",
-                    color = if (isError) ErrorRed.copy(alpha = 0.7f) else Silver.copy(alpha = 0.5f),
+                    if (isError) "Error" else "Hackie AI",
+                    color = if (isError) AccentBlue.copy(alpha = 0.75f) else Silver.copy(alpha = 0.5f),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium
                 )
             }
+        } else if (isUser && !message.isLoading) {
+            Text(
+                "You",
+                color = Silver.copy(alpha = 0.45f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(end = 8.dp, bottom = 4.dp)
+            )
         }
 
         // Bubble body
@@ -134,7 +140,7 @@ fun ChatBubble(message: ChatMessage, viewModel: AssistantViewModel, mainViewMode
         Surface(
             color = Color.Transparent,
             shape = bubbleShape,
-            modifier = Modifier.widthIn(max = 340.dp)
+            modifier = Modifier.widthIn(max = 352.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -142,7 +148,7 @@ fun ChatBubble(message: ChatMessage, viewModel: AssistantViewModel, mainViewMode
                         when {
                             isUser -> UserBubbleGradient
                             isError -> Brush.verticalGradient(
-                                listOf(ErrorRed.copy(alpha = 0.08f), ErrorRed.copy(alpha = 0.04f))
+                                listOf(AccentBlue.copy(alpha = 0.08f), AccentBlue.copy(alpha = 0.04f))
                             )
                             else -> Brush.verticalGradient(
                                 listOf(Graphite.copy(alpha = 0.65f), Graphite.copy(alpha = 0.4f))
@@ -153,7 +159,7 @@ fun ChatBubble(message: ChatMessage, viewModel: AssistantViewModel, mainViewMode
                     .then(
                         if (!isUser) Modifier.border(
                             0.5.dp,
-                            if (isError) ErrorRed.copy(alpha = 0.2f) else BorderColor.copy(alpha = 0.15f),
+                            if (isError) AccentBlue.copy(alpha = 0.25f) else BorderColor.copy(alpha = 0.15f),
                             bubbleShape
                         ) else Modifier
                     )
@@ -193,7 +199,7 @@ fun ChatBubble(message: ChatMessage, viewModel: AssistantViewModel, mainViewMode
                                 text = if (isError) message.content.removePrefix("Error: ") else message.content,
                                 color = when {
                                     isUser -> Color.White
-                                    isError -> ErrorRed.copy(alpha = 0.9f)
+                                    isError -> AccentBlue.copy(alpha = 0.95f)
                                     else -> Platinum
                                 },
                                 fontSize = 15f
@@ -275,27 +281,33 @@ fun ChatBubble(message: ChatMessage, viewModel: AssistantViewModel, mainViewMode
 
         // Timestamp & Read Receipt
         if (!message.isLoading) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
+            Surface(
+                shape = RoundedCornerShape(99.dp),
+                color = Graphite.copy(alpha = 0.25f),
                 modifier = Modifier.padding(
                     start = if (!isUser) 8.dp else 0.dp,
                     end = if (isUser) 8.dp else 0.dp,
                     top = 3.dp
                 )
             ) {
-                Text(
-                    text = formatRelativeTime(message.timestamp),
-                    color = Silver.copy(alpha = 0.25f),
-                    fontSize = 10.sp
-                )
-                if (isUser) {
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        Icons.Default.DoneAll,
-                        contentDescription = "Sent",
-                        tint = Platinum.copy(alpha = 0.8f),
-                        modifier = Modifier.size(11.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = formatRelativeTime(message.timestamp),
+                        color = Silver.copy(alpha = 0.35f),
+                        fontSize = 10.sp
                     )
+                    if (isUser) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.DoneAll,
+                            contentDescription = "Sent",
+                            tint = Platinum.copy(alpha = 0.8f),
+                            modifier = Modifier.size(11.dp)
+                        )
+                    }
                 }
             }
         }
@@ -349,14 +361,14 @@ fun TypingIndicator() {
             val alpha by infiniteTransition.animateFloat(
                 initialValue = 0.25f, targetValue = 1f,
                 animationSpec = infiniteRepeatable(
-                    animation = tween(600, delayMillis = delay, easing = EaseInOutSine),
+                    animation = tween(AssistantMotion.PULSE_DOT, delayMillis = delay, easing = EaseInOutSine),
                     repeatMode = RepeatMode.Reverse
                 ), label = "dot_$delay"
             )
             val yOffset by infiniteTransition.animateFloat(
                 initialValue = 0f, targetValue = -4f,
                 animationSpec = infiniteRepeatable(
-                    animation = tween(600, delayMillis = delay, easing = EaseInOutSine),
+                    animation = tween(AssistantMotion.PULSE_DOT, delayMillis = delay, easing = EaseInOutSine),
                     repeatMode = RepeatMode.Reverse
                 ), label = "dotY_$delay"
             )

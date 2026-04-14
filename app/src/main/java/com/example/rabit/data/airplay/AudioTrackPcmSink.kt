@@ -4,6 +4,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import kotlin.math.pow
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -11,6 +12,7 @@ class AudioTrackPcmSink : RaopAudioSink {
     private var audioTrack: AudioTrack? = null
     private var sampleRate: Int = 44_100
     private var channels: Int = 2
+    private var lastVolumeDb: Float = 0f
 
     override fun configure(sampleRate: Int, channels: Int) {
         this.sampleRate = sampleRate
@@ -37,6 +39,7 @@ class AudioTrackPcmSink : RaopAudioSink {
         ).apply {
             play()
         }
+        setVolumeDb(lastVolumeDb)
     }
 
     override fun writePcm16le(frame: ByteArray) {
@@ -44,6 +47,15 @@ class AudioTrackPcmSink : RaopAudioSink {
         if (track.state == AudioTrack.STATE_INITIALIZED) {
             track.write(frame, 0, frame.size)
         }
+    }
+
+    override fun setVolumeDb(db: Float) {
+        lastVolumeDb = db
+        val track = audioTrack ?: return
+        if (track.state != AudioTrack.STATE_INITIALIZED) return
+        val clampedDb = db.coerceIn(-30f, 0f)
+        val gain = 10.0.pow(clampedDb / 20.0).toFloat().coerceIn(0.18f, 1f)
+        track.setVolume(gain)
     }
 
     override fun playTestTone(durationMs: Int) {

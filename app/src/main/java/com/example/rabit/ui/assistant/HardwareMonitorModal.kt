@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.*
@@ -41,28 +42,43 @@ fun HardwareMonitorModal(onDismiss: () -> Unit) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = ChatSurface,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = Silver.copy(alpha = 0.2f)) }
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Silver.copy(alpha = 0.2f)) },
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 32.dp, start = 20.dp, end = 20.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    modifier = Modifier.size(36.dp).background(AccentPurple.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                        modifier = Modifier.size(36.dp).background(AccentBlue.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Memory, contentDescription = null, tint = AccentPurple)
+                        Icon(Icons.Default.Memory, contentDescription = null, tint = AccentBlue)
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Text("Hardware Monitor", color = Platinum, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Column {
+                        Text("Hardware Monitor", color = Platinum, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("Live device stats", color = Silver.copy(alpha = 0.6f), fontSize = 12.sp)
+                    }
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Silver)
+                }
             }
 
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = SoftGrey.copy(alpha = 0.1f),
-                border = BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.3f)),
+                color = Graphite.copy(alpha = 0.5f),
+                border = BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.35f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -80,7 +96,7 @@ fun HardwareMonitorModal(onDismiss: () -> Unit) {
                     LinearProgressIndicator(
                         progress = { usagePercent },
                         modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
-                        color = if (usagePercent > 0.85f) ErrorRed else AccentPurple,
+                        color = AccentBlue,
                         trackColor = Color.Black.copy(alpha = 0.3f)
                     )
                     
@@ -88,7 +104,7 @@ fun HardwareMonitorModal(onDismiss: () -> Unit) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             "High memory usage. Local models may run slowly or crash.",
-                            color = WarningYellow,
+                            color = Silver,
                             fontSize = 11.sp
                         )
                     }
@@ -100,8 +116,8 @@ fun HardwareMonitorModal(onDismiss: () -> Unit) {
             // Additional basic specs could go here
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = SoftGrey.copy(alpha = 0.1f),
-                border = BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.3f)),
+                color = Graphite.copy(alpha = 0.5f),
+                border = BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.35f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

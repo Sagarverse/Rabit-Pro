@@ -49,7 +49,8 @@ fun PromptLibraryModal(
         containerColor = ChatSurface,
         dragHandle = {
             BottomSheetDefaults.DragHandle(color = Silver.copy(alpha = 0.2f))
-        }
+        },
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
         Column(
             modifier = Modifier
@@ -62,28 +63,47 @@ fun PromptLibraryModal(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "Prompt Library",
-                    color = Platinum,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                IconButton(onClick = { showAddDialog = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "Add", tint = AccentGold)
+                Column {
+                    Text(
+                        "Prompt Library",
+                        color = Platinum,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "${savedPrompts.size} saved prompts",
+                        color = Silver.copy(alpha = 0.6f),
+                        fontSize = 12.sp
+                    )
+                }
+                Row {
+                    IconButton(onClick = { showAddDialog = true }) {
+                        Icon(Icons.Default.Add, contentDescription = "Add", tint = AccentBlue)
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Silver)
+                    }
                 }
             }
 
             if (savedPrompts.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                    Text("No saved prompts yet.", color = Silver.copy(alpha = 0.5f))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Graphite.copy(alpha = 0.45f),
+                    border = BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.32f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Text("No saved prompts yet.", color = Silver.copy(alpha = 0.55f))
+                    }
                 }
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(savedPrompts) { prompt ->
+                    items(savedPrompts.sortedBy { it.lowercase() }) { prompt ->
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = SoftGrey.copy(alpha = 0.1f),
-                            border = BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.3f)),
+                            color = Graphite.copy(alpha = 0.5f),
+                            border = BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.34f)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -97,7 +117,7 @@ fun PromptLibraryModal(
                                 Text(
                                     prompt,
                                     color = Platinum,
-                                    fontSize = 14.sp,
+                                    fontSize = 13.sp,
                                     maxLines = 2,
                                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
@@ -112,7 +132,7 @@ fun PromptLibraryModal(
                                     },
                                     modifier = Modifier.size(24.dp)
                                 ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = ErrorRed.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Silver.copy(alpha = 0.75f), modifier = Modifier.size(16.dp))
                                 }
                             }
                         }
@@ -135,7 +155,7 @@ fun PromptLibraryModal(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
-                        focusedBorderColor = AccentGold,
+                        focusedBorderColor = AccentBlue,
                         unfocusedBorderColor = BorderColor
                     ),
                     modifier = Modifier.fillMaxWidth()
@@ -151,7 +171,7 @@ fun PromptLibraryModal(
                     }
                     showAddDialog = false
                 }) {
-                    Text("Save", color = AccentGold)
+                    Text("Save", color = AccentBlue)
                 }
             },
             dismissButton = {

@@ -32,7 +32,7 @@ fun AssistantHistorySection() {
             Text("History", color = Silver, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.weight(1f))
             TextButton(onClick = { AssistantHistoryStore.clear() }) {
-                Text("Clear", color = ErrorRed)
+                Text("Clear", color = Silver)
             }
         }
         Spacer(modifier = Modifier.height(4.dp))

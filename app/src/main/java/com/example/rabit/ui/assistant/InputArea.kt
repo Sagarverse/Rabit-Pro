@@ -39,7 +39,7 @@ fun PremiumInputArea(viewModel: AssistantViewModel, mainViewModel: MainViewModel
                     brush = Brush.horizontalGradient(
                         listOf(
                             Color.Transparent,
-                            AiViolet.copy(alpha = 0.15f),
+                            AccentBlue.copy(alpha = 0.15f),
                             Color.Transparent
                         )
                     ),
@@ -93,7 +93,7 @@ fun PremiumInputArea(viewModel: AssistantViewModel, mainViewModel: MainViewModel
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            "AUTO PUSH",
+                            "AUTO PUSH TO MAC",
                             color = if (autoPush) Platinum else Silver.copy(alpha = 0.4f),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
@@ -115,6 +115,14 @@ fun PremiumInputArea(viewModel: AssistantViewModel, mainViewModel: MainViewModel
                 // Quick Prompts Row (visible when chat is active)
                 if (messages.isNotEmpty()) {
                     val quickPrompts = listOf("Explain", "Summarize", "Debug", "Refactor", "Translate")
+                    Text(
+                        "Quick Actions",
+                        color = Silver.copy(alpha = 0.5f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(start = 16.dp, bottom = 6.dp)
+                    )
                     LazyRow(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -136,12 +144,12 @@ fun PremiumInputArea(viewModel: AssistantViewModel, mainViewModel: MainViewModel
                                     viewModel.onInputChanged(if (current.isBlank()) prefix else "$prefix$current")
                                 },
                                 shape = RoundedCornerShape(12.dp),
-                                color = SoftGrey.copy(alpha = 0.2f),
-                                border = BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.3f))
+                                color = Graphite.copy(alpha = 0.45f),
+                                border = BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.35f))
                             ) {
                                 Text(
                                     text = promptLabel,
-                                    color = Platinum.copy(alpha = 0.9f),
+                                    color = Platinum.copy(alpha = 0.88f),
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)

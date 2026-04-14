@@ -158,7 +158,7 @@ object RabitNetworkServer {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rabit File Hub</title>
+    <title>Hackie File Hub</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -237,7 +237,7 @@ object RabitNetworkServer {
     </div>
 
     <nav class="navbar">
-        <div class="logo">RABIT<span>.HUB</span></div>
+        <div class="logo">HACKIE<span>.HUB</span></div>
         <div style="display: flex; gap: 12px; align-items: center">
             <button onclick="revokeCurrentSession()" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 10px 14px; cursor: pointer; font-weight: 600">Revoke Session</button>
             <div class="status-badge">
@@ -592,7 +592,7 @@ object RabitNetworkServer {
                                 val outputDir = Environment.getExternalStoragePublicDirectory(
                                     Environment.DIRECTORY_DOWNLOADS
                                 ).also { it.mkdirs() }
-                                val destFile = File(outputDir, "Rabit_$originalName")
+                                val destFile = File(outputDir, "Hackie_$originalName")
                                 part.streamProvider().use { input ->
                                     destFile.outputStream().use { output ->
                                         copyWithProgress(input, output) { processed ->
@@ -877,7 +877,7 @@ object RabitNetworkServer {
 
                 // ───── Health Check ─────
                 get("/ping") {
-                    call.respond(HttpStatusCode.OK, ApiResponse(true, "Rabit Hub Online"))
+                    call.respond(HttpStatusCode.OK, ApiResponse(true, "Hackie Hub Online"))
                 }
             }
         }.also { it.start(wait = false) }

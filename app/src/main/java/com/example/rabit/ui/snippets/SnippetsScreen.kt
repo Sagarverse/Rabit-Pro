@@ -37,6 +37,20 @@ fun SnippetsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     var snippets by remember { mutableStateOf(loadSnippets(prefs)) }
     var showAddDialog by remember { mutableStateOf(false) }
     var expandedSnippet by remember { mutableStateOf<String?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    val normalizedQuery = searchQuery.trim().lowercase()
+    val filteredSnippets = remember(snippets, normalizedQuery) {
+        if (normalizedQuery.isBlank()) {
+            snippets
+        } else {
+            snippets.filter {
+                it.name.lowercase().contains(normalizedQuery) ||
+                    it.content.lowercase().contains(normalizedQuery) ||
+                    it.category.lowercase().contains(normalizedQuery)
+            }
+        }
+    }
 
     Scaffold(
         containerColor = Obsidian,
@@ -112,7 +126,76 @@ fun SnippetsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(vertical = 12.dp)
             ) {
-                items(snippets) { snippet ->
+                item("snippets_stats") {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = AccentGold.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(14.dp),
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, AccentGold.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Saved snippets", color = Silver, fontSize = 12.sp)
+                            Text(snippets.size.toString(), color = AccentGold, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                    }
+                }
+                item("snippets_search") {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (searchQuery.isNotBlank()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear search")
+                                }
+                            }
+                        },
+                        label = { Text("Search snippet name or content") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AccentBlue,
+                            unfocusedBorderColor = BorderColor,
+                            focusedTextColor = Platinum,
+                            unfocusedTextColor = Platinum
+                        )
+                    )
+                }
+                if (searchQuery.isNotBlank()) {
+                    item("snippets_results") {
+                        Text(
+                            "${filteredSnippets.size} result(s) for '$searchQuery'",
+                            color = Silver,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
+                }
+                if (filteredSnippets.isEmpty()) {
+                    item("snippets_empty_filtered") {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Graphite.copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                if (searchQuery.isBlank()) "No snippets available" else "No snippets found for '$searchQuery'",
+                                color = Silver,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(14.dp)
+                            )
+                        }
+                    }
+                }
+                items(filteredSnippets) { snippet ->
                     SnippetCard(
                         snippet = snippet,
                         isExpanded = expandedSnippet == snippet.name,

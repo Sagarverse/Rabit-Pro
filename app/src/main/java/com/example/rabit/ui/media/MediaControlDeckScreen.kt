@@ -2,6 +2,10 @@ package com.example.rabit.ui.media
 
 import android.graphics.BitmapFactory
 import android.util.Base64
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -21,7 +25,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
@@ -29,12 +32,17 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -45,11 +53,14 @@ import androidx.compose.ui.unit.sp
 import com.example.rabit.data.bluetooth.HidDeviceManager
 import com.example.rabit.ui.MainViewModel
 import com.example.rabit.ui.theme.AccentBlue
+import com.example.rabit.ui.theme.BorderColor
 import com.example.rabit.ui.theme.Graphite
 import com.example.rabit.ui.theme.Obsidian
 import com.example.rabit.ui.theme.Platinum
 import com.example.rabit.ui.theme.Silver
+import com.example.rabit.ui.theme.SuccessGreen
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MediaControlDeckScreen(
     viewModel: MainViewModel,
@@ -61,6 +72,11 @@ fun MediaControlDeckScreen(
     val artworkBase64 by viewModel.nowPlayingArtworkBase64.collectAsState()
     val p2pStatus by viewModel.p2pStatus.collectAsState("Disconnected")
     val connectionState by viewModel.connectionState.collectAsState()
+    var contentVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        contentVisible = true
+    }
 
     val artwork = remember(artworkBase64) {
         try {
@@ -73,12 +89,20 @@ fun MediaControlDeckScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Obsidian)
-            .padding(20.dp)
+    Scaffold(
+        containerColor = Obsidian
+    ) { padding ->
+    AnimatedVisibility(
+        visible = contentVisible,
+        enter = fadeIn(animationSpec = tween(320)) + slideInVertically(initialOffsetY = { it / 14 }, animationSpec = tween(320))
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(Obsidian)
+                .padding(20.dp)
+        ) {
         Surface(
             color = Graphite.copy(alpha = 0.45f),
             shape = RoundedCornerShape(24.dp),
@@ -115,6 +139,21 @@ fun MediaControlDeckScreen(
                     color = Silver.copy(alpha = 0.7f),
                     fontSize = 11.sp
                 )
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    color = Graphite.copy(alpha = 0.55f),
+                    border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.45f)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = if (connectionState is HidDeviceManager.ConnectionState.Connected) "Hardware Link Ready" else "Connect via Bluetooth for full control",
+                        color = if (connectionState is HidDeviceManager.ConnectionState.Connected) SuccessGreen else Silver,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
                 Button(
@@ -161,7 +200,7 @@ fun MediaControlDeckScreen(
                 Text("How it works", color = Platinum, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(6.dp))
                 Text("• Volume & Playback controls work instantly via standard Bluetooth.", color = Silver, fontSize = 12.sp)
-                Text("• To view Track Name and Album Artwork, run the Desktop Helper on your Mac:\n   python3 rabit_desktop_helper.py", color = Silver, fontSize = 12.sp)
+                Text("• For live metadata/artwork, run the desktop helper on your Mac:\n   python3 desktop-helper/rabit_desktop_helper.py", color = Silver, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = "Companion metadata format: {\"type\":\"NOW_PLAYING\",\"title\":\"...\",\"artist\":\"...\",\"album\":\"...\",\"artworkBase64\":\"...\"}",
@@ -171,6 +210,8 @@ fun MediaControlDeckScreen(
                 )
             }
         }
+        }
+    }
     }
 }
 

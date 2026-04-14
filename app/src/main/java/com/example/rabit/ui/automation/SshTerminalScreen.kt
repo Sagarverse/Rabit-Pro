@@ -1,5 +1,9 @@
 package com.example.rabit.ui.automation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,10 +12,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Link
@@ -29,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,13 +79,40 @@ fun SshTerminalScreen(
     var passInput by remember(pass) { mutableStateOf(pass) }
     var commandInput by remember { mutableStateOf("") }
     val keyboardController = LocalSoftwareKeyboardController.current
+    var contentVisible by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    LaunchedEffect(Unit) {
+        contentVisible = true
+    }
+
+    AnimatedVisibility(
+        visible = contentVisible,
+        enter = fadeIn(animationSpec = tween(320)) + slideInVertically(initialOffsetY = { it / 14 }, animationSpec = tween(320))
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Graphite)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF162031)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("SSH Terminal Setup (Step by Step)", color = Platinum, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("1. Mac: System Settings > General > Sharing > enable Remote Login.", color = Silver, fontSize = 12.sp)
+                Text("2. Note your Mac username and local IP (for example 192.168.1.20).", color = Silver, fontSize = 12.sp)
+                Text("3. Enter Host/IP, Port (usually 22), Username, and Password below.", color = Silver, fontSize = 12.sp)
+                Text("4. Tap Connect. If it fails, verify both devices are on the same Wi-Fi network.", color = Silver, fontSize = 12.sp)
+                Text("5. If using a firewall, allow incoming SSH (TCP 22) on your Mac.", color = Silver, fontSize = 12.sp)
+                Text("6. After connected, run a simple command first: whoami or pwd.", color = Silver, fontSize = 12.sp)
+                Text("7. For better security, use a dedicated low-privilege user account for remote control.", color = Silver, fontSize = 12.sp)
+            }
+        }
+
         Card(
             colors = CardDefaults.cardColors(containerColor = Graphite),
             modifier = Modifier.fillMaxWidth()
@@ -172,7 +207,7 @@ fun SshTerminalScreen(
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF061306)),
             modifier = Modifier
-                .weight(1f)
+                .heightIn(min = 220.dp, max = 360.dp)
                 .fillMaxWidth()
         ) {
             LazyColumn(
@@ -247,5 +282,6 @@ fun SshTerminalScreen(
             color = Silver,
             fontSize = 11.sp
         )
+        }
     }
 }

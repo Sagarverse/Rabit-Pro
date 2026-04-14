@@ -78,7 +78,7 @@ fun OnboardingScreen(onComplete: () -> Unit) {
             AccentGold,
             "Macro Genie",
             "AI-Powered Automation",
-            "Tell the Genie what you want to do on your Mac, and Rabit will build the HID sequence instantly."
+            "Tell the Genie what you want to do on your Mac, and Hackie will build the HID sequence instantly."
         ),
         OnboardingPage(
             Icons.Default.VpnKey,
@@ -98,17 +98,25 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Skip button
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.End
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                Text(
+                    "Step ${pagerState.currentPage + 1} of ${pages.size}",
+                    color = Silver.copy(alpha = 0.8f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
                 if (pagerState.currentPage < pages.size - 1) {
                     TextButton(onClick = onComplete) {
                         Text("Skip", color = Silver, fontSize = 14.sp)
                     }
+                } else {
+                    Spacer(modifier = Modifier.width(40.dp))
                 }
             }
 
@@ -127,7 +135,6 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Dots
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(bottom = 32.dp)
@@ -146,7 +153,6 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                     }
                 }
 
-                // Action button
                 val isLastPage = pagerState.currentPage == pages.size - 1
                 Button(
                     onClick = {
@@ -162,7 +168,8 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                         .fillMaxWidth()
                         .height(56.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isLastPage) SuccessGreen else AccentBlue
+                        containerColor = if (isLastPage) SuccessGreen else AccentBlue,
+                        contentColor = Color.White
                     ),
                     shape = RoundedCornerShape(16.dp)
                 ) {
@@ -177,6 +184,13 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(20.dp))
                     }
                 }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    if (isLastPage) "You are all set for pairing and control." else "Swipe to preview features or continue.",
+                    color = Silver.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }

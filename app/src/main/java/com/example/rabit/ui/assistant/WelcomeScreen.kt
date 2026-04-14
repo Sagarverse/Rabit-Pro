@@ -32,14 +32,14 @@ fun PremiumWelcomeScreen(viewModel: AssistantViewModel) {
     val glowScale by infiniteTransition.animateFloat(
         initialValue = 0.8f, targetValue = 1.2f,
         animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = EaseInOutSine),
+            animation = tween(AssistantMotion.AMBIENT_GLOW, easing = EaseInOutSine),
             repeatMode = RepeatMode.Reverse
         ), label = "glowScale"
     )
     val glowAlpha by infiniteTransition.animateFloat(
         initialValue = 0.2f, targetValue = 0.5f,
         animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = EaseInOutSine),
+            animation = tween(AssistantMotion.AMBIENT_GLOW, easing = EaseInOutSine),
             repeatMode = RepeatMode.Reverse
         ), label = "glowAlpha"
     )
@@ -50,15 +50,16 @@ fun PremiumWelcomeScreen(viewModel: AssistantViewModel) {
     var chipsVisible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         orbVisible = true
-        delay(200)
+        delay(AssistantMotion.STAGGER_SHORT.toLong())
         textVisible = true
-        delay(300)
+        delay(AssistantMotion.STAGGER_MEDIUM.toLong())
         chipsVisible = true
     }
 
     val suggestions = listOf(
         listOf(Icons.Default.Code to "Write Code", Icons.Default.Lightbulb to "Explain"),
-        listOf(Icons.Default.Translate to "Translate", Icons.Default.Edit to "Summarize")
+        listOf(Icons.Default.Translate to "Translate", Icons.Default.Edit to "Summarize"),
+        listOf(Icons.Default.BugReport to "Debug", Icons.Default.Analytics to "Analyze")
     )
 
     Column(
@@ -69,10 +70,32 @@ fun PremiumWelcomeScreen(viewModel: AssistantViewModel) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Surface(
+            shape = RoundedCornerShape(99.dp),
+            color = Graphite.copy(alpha = 0.45f),
+            border = BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.3f))
+        ) {
+            Text(
+                "HACKIE AI ASSISTANT",
+                color = Silver.copy(alpha = 0.7f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.4.sp,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // Animated glow orb
         AnimatedVisibility(
             visible = orbVisible,
-            enter = scaleIn(animationSpec = spring(dampingRatio = 0.6f)) + fadeIn()
+            enter = scaleIn(
+                animationSpec = spring(
+                    dampingRatio = AssistantMotion.SPRING_ENTRY_DAMPING,
+                    stiffness = AssistantMotion.SPRING_ENTRY_STIFFNESS
+                )
+            ) + fadeIn(animationSpec = tween(AssistantMotion.PANEL_FADE_IN))
         ) {
             Box(
                 contentAlignment = Alignment.Center,
@@ -85,7 +108,7 @@ fun PremiumWelcomeScreen(viewModel: AssistantViewModel) {
                         .alpha(glowAlpha)
                         .background(
                             Brush.radialGradient(
-                                listOf(AiViolet.copy(alpha = 0.4f), Color.Transparent)
+                                listOf(AccentBlue.copy(alpha = 0.4f), Color.Transparent)
                             ),
                             CircleShape
                         )
@@ -94,14 +117,14 @@ fun PremiumWelcomeScreen(viewModel: AssistantViewModel) {
                     modifier = Modifier.size(72.dp),
                     shape = CircleShape,
                     color = Color.Transparent,
-                    border = BorderStroke(1.5.dp, AiViolet.copy(alpha = 0.3f))
+                    border = BorderStroke(1.5.dp, AccentBlue.copy(alpha = 0.3f))
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(
                                 Brush.radialGradient(
-                                    listOf(AiViolet.copy(alpha = 0.15f), ChatSurface)
+                                    listOf(AccentBlue.copy(alpha = 0.15f), ChatSurface)
                                 )
                             ),
                         contentAlignment = Alignment.Center
@@ -121,20 +144,20 @@ fun PremiumWelcomeScreen(viewModel: AssistantViewModel) {
 
         AnimatedVisibility(
             visible = textVisible,
-            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(tween(500))
+            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(tween(AssistantMotion.STAGGER_LONG))
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "How can I help?",
+                    "Build Faster With Hackie AI",
                     color = Platinum,
-                    fontSize = 26.sp,
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "Ask me anything — code, ideas, translation, or analysis.",
-                    color = Silver.copy(alpha = 0.5f),
+                    "Generate code, debug issues, summarize notes, and push polished responses to your Mac.",
+                    color = Silver.copy(alpha = 0.58f),
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center,
                     lineHeight = 20.sp
@@ -147,9 +170,31 @@ fun PremiumWelcomeScreen(viewModel: AssistantViewModel) {
         // Suggestion Chips — 2-column grid
         AnimatedVisibility(
             visible = chipsVisible,
-            enter = slideInVertically(initialOffsetY = { it / 2 }, animationSpec = tween(500)) + fadeIn(tween(600))
+            enter = slideInVertically(initialOffsetY = { it / 2 }, animationSpec = tween(AssistantMotion.STAGGER_LONG)) + fadeIn(tween(AssistantMotion.STAGGER_LONG))
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Graphite.copy(alpha = 0.45f),
+                    border = BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.28f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                        Text(
+                            "Try one to start",
+                            color = Silver.copy(alpha = 0.85f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            "Tap a chip to prefill your prompt instantly.",
+                            color = Silver.copy(alpha = 0.55f),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
                 suggestions.forEach { row ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),

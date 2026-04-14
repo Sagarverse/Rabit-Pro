@@ -14,8 +14,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
@@ -45,10 +47,21 @@ import com.example.rabit.ui.components.*
 fun PairingScreen(
     viewModel: MainViewModel, 
     onConnected: () -> Unit,
+    onNavigateToKeyboard: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToAssistant: () -> Unit,
     onNavigateToWebBridge: () -> Unit,
-    onNavigateToInjector: () -> Unit
+    onNavigateToInjector: () -> Unit,
+    onNavigateToMediaDeck: () -> Unit,
+    onNavigateToAirPlayReceiver: () -> Unit,
+    onNavigateToWakeOnLan: () -> Unit,
+    onNavigateToSshTerminal: () -> Unit,
+    onNavigateToGlobalSearch: () -> Unit,
+    onNavigateToSnippets: () -> Unit,
+    onNavigateToAutomation: () -> Unit,
+    onNavigateToProfile: () -> Unit,
+    onNavigateToCustomization: () -> Unit,
+    onNavigateToPasswordManager: () -> Unit
 ) {
     val scannedDevices by viewModel.scannedDevices.collectAsState()
     val isScanning by viewModel.isScanning.collectAsState()
@@ -125,6 +138,14 @@ fun PairingScreen(
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val drawerScrollState = rememberScrollState()
+    var showDrawerScrollHint by remember { mutableStateOf(true) }
+
+    LaunchedEffect(drawerScrollState.value) {
+        if (drawerScrollState.value > 0) {
+            showDrawerScrollHint = false
+        }
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -134,28 +155,33 @@ fun PairingScreen(
                 drawerContentColor = Platinum,
                 modifier = Modifier.width(300.dp)
             ) {
-                Spacer(modifier = Modifier.height(24.dp))
-                // Drawer Header
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        "RABIT PRO",
-                        color = Platinum,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 2.sp
-                    )
-                    Text(
-                        "Ultimate HID Control",
-                        color = AccentBlue,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                
-                HorizontalDivider(color = BorderColor.copy(alpha = 0.1f), modifier = Modifier.padding(horizontal = 20.dp))
-                Spacer(modifier = Modifier.height(16.dp))
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Column(modifier = Modifier.padding(24.dp)) {
+                        Text(
+                            "HACKIE",
+                            color = Platinum,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 2.sp
+                        )
+                        Text(
+                            "Ultimate HID Control",
+                            color = AccentBlue,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
 
-                // Drawer Items
+                    HorizontalDivider(color = BorderColor.copy(alpha = 0.1f), modifier = Modifier.padding(horizontal = 20.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Box(modifier = Modifier.weight(1f)) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(drawerScrollState)
+                        ) {
                 NavigationDrawerItem(
                     label = { Text("Connect Device", fontWeight = FontWeight.SemiBold) },
                     selected = true,
@@ -219,7 +245,103 @@ fun PairingScreen(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, unselectedIconColor = Silver, unselectedTextColor = Silver)
                 )
-                
+
+                NavigationDrawerItem(
+                    label = { Text("Control Hub", fontWeight = FontWeight.SemiBold) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToKeyboard()
+                    },
+                    icon = { Icon(Icons.Default.Keyboard, contentDescription = null) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, unselectedIconColor = Silver, unselectedTextColor = Silver)
+                )
+
+                NavigationDrawerItem(
+                    label = { Text("Media Deck", fontWeight = FontWeight.SemiBold) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToMediaDeck()
+                    },
+                    icon = { Icon(Icons.Default.MusicNote, contentDescription = null) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, unselectedIconColor = Silver, unselectedTextColor = Silver)
+                )
+
+                NavigationDrawerItem(
+                    label = { Text("AirPlay Receiver", fontWeight = FontWeight.SemiBold) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToAirPlayReceiver()
+                    },
+                    icon = { Icon(Icons.Default.Speaker, contentDescription = null) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, unselectedIconColor = Silver, unselectedTextColor = Silver)
+                )
+
+                NavigationDrawerItem(
+                    label = { Text("Wake-on-LAN", fontWeight = FontWeight.SemiBold) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToWakeOnLan()
+                    },
+                    icon = { Icon(Icons.Default.PowerSettingsNew, contentDescription = null) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, unselectedIconColor = Silver, unselectedTextColor = Silver)
+                )
+
+                NavigationDrawerItem(
+                    label = { Text("SSH Terminal", fontWeight = FontWeight.SemiBold) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToSshTerminal()
+                    },
+                    icon = { Icon(Icons.Default.Terminal, contentDescription = null) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, unselectedIconColor = Silver, unselectedTextColor = Silver)
+                )
+
+                NavigationDrawerItem(
+                    label = { Text("Automation", fontWeight = FontWeight.SemiBold) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToAutomation()
+                    },
+                    icon = { Icon(Icons.Default.Bolt, contentDescription = null) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, unselectedIconColor = Silver, unselectedTextColor = Silver)
+                )
+
+                NavigationDrawerItem(
+                    label = { Text("Snippets", fontWeight = FontWeight.SemiBold) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToSnippets()
+                    },
+                    icon = { Icon(Icons.Default.ContentPaste, contentDescription = null) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, unselectedIconColor = Silver, unselectedTextColor = Silver)
+                )
+
+                NavigationDrawerItem(
+                    label = { Text("Password Manager", fontWeight = FontWeight.SemiBold) },
+                    selected = false,
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToPasswordManager()
+                    },
+                    icon = { Icon(Icons.Default.Password, contentDescription = null) },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent, unselectedIconColor = Silver, unselectedTextColor = Silver)
+                )
+
                 Spacer(modifier = Modifier.weight(1f))
                 
                 Text(
@@ -228,6 +350,43 @@ fun PairingScreen(
                     color = Silver.copy(alpha = 0.3f),
                     fontSize = 10.sp
                 )
+                        }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(14.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Obsidian.copy(alpha = 0.8f), Color.Transparent)
+                                )
+                            )
+                    )
+
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(14.dp)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, Obsidian.copy(alpha = 0.8f))
+                                    )
+                                )
+                        )
+
+                        if (showDrawerScrollHint && drawerScrollState.maxValue > 0) {
+                            Text(
+                                "Scroll for more",
+                                color = Silver.copy(alpha = 0.55f),
+                                fontSize = 10.sp,
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 8.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
     ) {
@@ -262,7 +421,7 @@ fun PairingScreen(
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Column {
                                     Text(
-                                        "RABIT PRO",
+                                        "HACKIE",
                                         color = Platinum,
                                         fontSize = 26.sp,
                                         fontWeight = FontWeight.Black,
@@ -300,6 +459,97 @@ fun PairingScreen(
                     contentPadding = PaddingValues(top = 20.dp, bottom = 40.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = AccentBlue.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(14.dp),
+                            border = androidx.compose.foundation.BorderStroke(0.6.dp, AccentBlue.copy(alpha = 0.35f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .background(AccentBlue.copy(alpha = 0.2f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.TipsAndUpdates,
+                                        contentDescription = null,
+                                        tint = AccentBlue,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        "Pair in 3 quick steps",
+                                        color = Platinum,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        "Enable Bluetooth, choose a workstation, then confirm pairing on your computer.",
+                                        color = Silver.copy(alpha = 0.82f),
+                                        fontSize = 11.sp,
+                                        lineHeight = 15.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Graphite.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(14.dp),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, BorderColor.copy(alpha = 0.35f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                AssistChip(
+                                    onClick = onNavigateToWebBridge,
+                                    label = { Text("Web Share") },
+                                    leadingIcon = { Icon(Icons.Default.Cloud, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = AccentTeal.copy(alpha = 0.16f),
+                                        labelColor = Platinum,
+                                        leadingIconContentColor = AccentTeal
+                                    )
+                                )
+                                AssistChip(
+                                    onClick = onNavigateToAssistant,
+                                    label = { Text("Assistant") },
+                                    leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = AiViolet.copy(alpha = 0.16f),
+                                        labelColor = Platinum,
+                                        leadingIconContentColor = AiViolet
+                                    )
+                                )
+                                AssistChip(
+                                    onClick = onNavigateToInjector,
+                                    label = { Text("Injector") },
+                                    leadingIcon = { Icon(Icons.Default.ElectricBolt, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                    colors = AssistChipDefaults.assistChipColors(
+                                        containerColor = AccentGold.copy(alpha = 0.16f),
+                                        labelColor = Platinum,
+                                        leadingIconContentColor = AccentGold
+                                    )
+                                )
+                            }
+                        }
+                    }
                     
                     // ── Error Banner ──
                     if (connectionError != null) {
@@ -369,7 +619,7 @@ fun PairingScreen(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    "Rabit requires Bluetooth to connect and act as a keyboard and mouse for your Mac.",
+                                    "Hackie requires Bluetooth to connect and act as a keyboard and mouse for your Mac.",
                                     color = Silver,
                                     fontSize = 14.sp,
                                     lineHeight = 20.sp,
@@ -436,6 +686,13 @@ fun PairingScreen(
                                 letterSpacing = 1.sp
                             )
                         }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Previously paired devices appear here for the fastest reconnect.",
+                            color = Silver.copy(alpha = 0.65f),
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp
+                        )
                     }
 
                     // Get bonded devices from adapter
@@ -505,10 +762,11 @@ fun PairingScreen(
                                     Text("Scanning", color = AccentBlue, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                                 }
                             } else {
-                                TextButton(
+                                FilledTonalButton(
                                     onClick = { viewModel.startScanning() },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(24.dp)
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(28.dp),
+                                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = AccentBlue.copy(alpha = 0.2f))
                                 ) {
                                     Icon(Icons.Default.Refresh, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -516,6 +774,13 @@ fun PairingScreen(
                                 }
                             }
                         }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Use Scan Again if your target machine does not appear yet.",
+                            color = Silver.copy(alpha = 0.65f),
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp
+                        )
                     }
 
                     // Filter out already bonded devices from scanned list
@@ -538,6 +803,12 @@ fun PairingScreen(
                                             Icon(Icons.AutoMirrored.Filled.BluetoothSearching, contentDescription = null, tint = Silver.copy(alpha = 0.3f), modifier = Modifier.size(32.dp))
                                             Spacer(modifier = Modifier.height(8.dp))
                                             Text("No new devices found", color = Silver.copy(alpha = 0.6f), fontSize = 13.sp)
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                "Move closer and keep your computer discoverable",
+                                                color = Silver.copy(alpha = 0.5f),
+                                                fontSize = 11.sp
+                                            )
                                         }
                                     }
                                 }
@@ -588,7 +859,7 @@ fun PairingScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Text("Don't see your Mac?", color = Platinum, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                    Text("Tap here to make Rabit discoverable", color = Silver, fontSize = 12.sp)
+                                    Text("Tap here to make Hackie discoverable", color = Silver, fontSize = 12.sp)
                                 }
                             }
                         }

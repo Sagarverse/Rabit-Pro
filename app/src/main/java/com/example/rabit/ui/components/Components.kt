@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -26,20 +27,23 @@ import com.example.rabit.ui.theme.*
 @Composable
 fun PremiumGlassCard(
     modifier: Modifier = Modifier,
-    backgroundColor: Color = Graphite.copy(alpha = 0.6f),
+    backgroundColor: Color = Graphite.copy(alpha = 0.72f),
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .shadow(10.dp, RoundedCornerShape(18.dp), clip = false)
+            .clip(RoundedCornerShape(18.dp))
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
-            .border(0.5.dp, BorderColor.copy(alpha = 0.5f), RoundedCornerShape(16.dp)),
-        color = backgroundColor
+            .border(1.dp, BorderStrong.copy(alpha = 0.55f), RoundedCornerShape(18.dp)),
+        color = Color.Transparent
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .background(GlassCardGradient)
+                .padding(16.dp),
             content = content
         )
     }
@@ -57,8 +61,8 @@ fun VibrantGradientButton(
         colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
         contentPadding = PaddingValues(),
         modifier = modifier
-            .height(56.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .height(54.dp)
+            .clip(RoundedCornerShape(16.dp))
             .background(gradient),
     ) {
         Box(
@@ -68,8 +72,9 @@ fun VibrantGradientButton(
             Text(
                 text = text,
                 color = Color.White,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold
+                fontSize = 15.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.3.sp
             )
         }
     }
@@ -77,13 +82,24 @@ fun VibrantGradientButton(
 
 @Composable
 fun PremiumSectionHeader(title: String) {
-    Text(
-        text = title.uppercase(),
-        color = Silver,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 16.dp, bottom = 8.dp, top = 24.dp)
-    )
+    Row(
+        modifier = Modifier.padding(start = 10.dp, bottom = 8.dp, top = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 22.dp, height = 4.dp)
+                .background(AccentBlue.copy(alpha = 0.8f), RoundedCornerShape(99.dp))
+        )
+        Text(
+            text = title.uppercase(),
+            color = Silver.copy(alpha = 0.92f),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.2.sp
+        )
+    }
 }
 
 /**
@@ -170,7 +186,7 @@ fun PushControlBar(
                     onClick = onStop,
                     modifier = Modifier.size(40.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = StopRed
+                        containerColor = AccentBlue.copy(alpha = 0.8f)
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -196,20 +212,17 @@ fun SettingsIconBadge(
     modifier: Modifier = Modifier,
     iconTint: Color = Color.White
 ) {
-    val isMonochrome = com.example.rabit.ui.theme.AppThemeMode.isMonochrome
-    val bg = if (isMonochrome) Color.White else backgroundColor.copy(alpha = 0.15f)
-    val tint = if (isMonochrome) Color.Black else backgroundColor
-
     Box(
         modifier = modifier
             .size(32.dp)
-            .background(bg, RoundedCornerShape(8.dp)),
+            .background(backgroundColor.copy(alpha = 0.16f), RoundedCornerShape(8.dp))
+            .border(0.8.dp, backgroundColor.copy(alpha = 0.35f), RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             icon,
             contentDescription = null,
-            tint = tint,
+            tint = iconTint,
             modifier = Modifier.size(18.dp)
         )
     }
